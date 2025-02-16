@@ -46,11 +46,3 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// ✅ Use this as the only bot startup function
-function startBot() {
-  client.login(config.DISCORD_TOKEN);
-}
-
-startBot(); // 🚀 Start the bot
-
-module.exports = { startBot };
