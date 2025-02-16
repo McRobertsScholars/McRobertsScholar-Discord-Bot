@@ -1,0 +1,11 @@
+2025-02-16T05:00:44.891Z [info]: Bot started successfully
+2025-02-16T05:04:04.902Z [info]: Bot started successfully
+2025-02-16T05:04:05.775Z [info]: Logged in as McRoberts Scholars Bot#1433
+2025-02-16T05:05:07.768Z [info]: Processed scholarship info for URL: https://www.confidentwriters.com/scholarship-essay-contest/
+2025-02-16T05:05:08.198Z [error]: Error inserting scholarship: Could not find the 'title' column of 'scholarships' in the schema cache
+2025-02-16T05:05:08.199Z [error]: Error processing message: Could not find the 'title' column of 'scholarships' in the schema cache
+2025-02-16T05:09:50.824Z [info]: Bot started successfully
+2025-02-16T05:09:51.556Z [info]: Logged in as McRoberts Scholars Bot#1433
+2025-02-16T05:09:59.415Z [info]: Processed scholarship info for URL: https://www.confidentwriters.com/scholarship-essay-contest/
+2025-02-16T05:09:59.840Z [info]: Inserted scholarship: undefined
+2025-02-16T05:09:59.841Z [info]: Processed and inserted scholarship from URL: https://www.confidentwriters.com/scholarship-essay-contest/

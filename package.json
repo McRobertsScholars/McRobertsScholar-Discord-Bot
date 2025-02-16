@@ -1,0 +1,21 @@
+{
+  "name": "discord-scholarship-bot",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@discordjs/builders": "^1.10.1",
+    "@discordjs/rest": "^2.4.3",
+    "@supabase/supabase-js": "^2.48.1",
+    "axios": "^1.7.9",
+    "cheerio": "^1.0.0",
+    "discord-api-types": "^0.37.119",
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.4.7",
+    "node-fetch": "^3.3.2",
+    "puppeteer": "^24.2.1",
+    "winston": "^3.17.0"
+  }
+}
