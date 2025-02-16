@@ -6,7 +6,8 @@ const fetch = require('node-fetch');
 const config = require('./utils/config.js');
 const logger = require('./utils/logger.js');
 const { setupAI } = require('./ai');
-
+const { startBot } = require("./bot.js");
+startBot();
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -109,4 +110,11 @@ client.once('ready', () => {
   registerCommands();
 });
 
-client.login(config.DISCORD_TOKEN);
+function startBot() {
+  console.log("Bot is starting...");
+  client.login(config.DISCORD_TOKEN);
+}
+
+module.exports = { startBot };
+
+
