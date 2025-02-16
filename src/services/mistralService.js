@@ -14,12 +14,12 @@ async function processScholarshipInfo(url) {
         {
           role: "user",
           content: `Please extract the following information from this scholarship page: ${url}
-          - Name
-          - Deadline  
-          - Amount
-          - Description
-          - Requirements
-          Format the response as a JSON object with these fields.`
+          - name
+          - deadline  
+          - amount
+          - description
+          - requirements
+          Format the response as a JSON object with these fields. `
         }
       ]
     }, {

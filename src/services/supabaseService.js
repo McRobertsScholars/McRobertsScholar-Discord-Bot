@@ -9,7 +9,7 @@ async function insertScholarship(scholarship) {
     const { data, error } = await supabase
       .from('scholarships')
       .insert([{
-        name: scholarship.title || 'No Title', // Use 'name' instead of 'title'
+        name: scholarship.name || 'No Title', // Use 'name' instead of 'title'
         deadline: scholarship.deadline || null,
         amount: scholarship.amount || 'Not specified',
         description: scholarship.description || 'No description',
@@ -18,7 +18,7 @@ async function insertScholarship(scholarship) {
       }]);
 
     if (error) throw error;
-    logger.info(`Inserted scholarship: ${scholarship.title}`);
+    logger.info(`Inserted scholarship: ${scholarship.name}`);
     return data;
   } catch (error) {
     logger.error(`Error inserting scholarship: ${error.message}`);
