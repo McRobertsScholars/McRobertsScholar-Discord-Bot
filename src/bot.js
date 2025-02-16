@@ -7,7 +7,7 @@ const config = require('./utils/config.js');
 const logger = require('./utils/logger.js');
 const { setupAI } = require('./ai');
 const { startBot } = require("./bot.js");
-startBot();
+
 
 const client = new Client({
   intents: [
@@ -110,6 +110,8 @@ client.once('ready', () => {
   setupPersistentMessage(client);
   registerCommands();
 });
+
+startBot();  // Call the startBot function to log in the bot
 
 function startBot() {
   console.log("Bot is starting...");
