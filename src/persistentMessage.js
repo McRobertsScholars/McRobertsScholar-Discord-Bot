@@ -11,11 +11,10 @@ async function setupPersistentMessage(client) {
     logger.info('✅ Found Channel: ' + channel.name);
     logger.info('✅ Found Role: ' + role.name);
 
-    // Send the "type verify to verify" message if it doesn't exist
-    let existingMessage = null;
-    const messages = await channel.messages.fetch({ limit: 10 });
-    existingMessage = messages.find(msg => msg.content.includes('type verify to verify'));
-    
+    // Fetch the latest 100 messages to increase chances of finding the "verify" message
+    const messages = await channel.messages.fetch({ limit: 100 });
+    let existingMessage = messages.find(msg => msg.content.includes('Type "verify" to verify'));
+
     if (!existingMessage) {
       existingMessage = await channel.send({
         content: 'Type "verify" to verify.',
