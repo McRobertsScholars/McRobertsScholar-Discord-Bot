@@ -4,6 +4,8 @@ const logger = require('./utils/logger.js');
 const express = require('express');
 const axios = require('axios');
 
+startBot(); // ✅ Called only once
+
 const app = express();
 const PORT = process.env.PORT || 10000;
 const WEBSITE_URL = "https://mcrobertsscholar-discord-bot.onrender.com"; // Replace with your actual Render URL
@@ -21,10 +23,8 @@ setInterval(() => {
 
 app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
 
-
 try {
-  startBot();
-  startDiscordService();
+  startDiscordService(); // ✅ Only calling startDiscordService()
   logger.info('Bot started successfully');
 } catch (error) {
   logger.error(`Error starting bot: ${error.message}`);

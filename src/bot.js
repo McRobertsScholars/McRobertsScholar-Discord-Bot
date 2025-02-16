@@ -8,6 +8,7 @@ const logger = require('./utils/logger.js');
 const { setupAI } = require('./ai');
 const { startBot } = require("./bot.js");
 startBot();
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
