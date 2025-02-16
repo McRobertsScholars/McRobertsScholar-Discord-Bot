@@ -1,6 +1,8 @@
 const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
 const path = require('path');
 const fs = require('fs');
+const express = require('express');
+const fetch = require('node-fetch');
 const config = require('./utils/config.js');
 const logger = require('./utils/logger.js');
 const { setupAI } = require('./ai');
@@ -14,7 +16,24 @@ const client = new Client({
   ]
 });
 
-// Load commands including /ask
+// Express server setup (prevents Render from sleeping)
+const app = express();
+const port = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+  res.send('Discord bot is running!');
+});
+
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+});
+
+// Keep-alive mechanism
+setInterval(() => {
+  fetch(process.env.RENDER_EXTERNAL_URL).then(() => console.log("Kept alive"));
+}, 840000); // 14 minutes
+
+// Load commands
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
@@ -29,7 +48,6 @@ for (const file of commandFiles) {
   }
 }
 
-
 // Interaction handler for slash commands
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
@@ -42,32 +60,20 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   try {
-    // Defer the reply only if it has not been already deferred or replied
-    if (!interaction.replied) {
-      if (!interaction.deferred) {
-        await interaction.deferReply();
-      }
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.deferReply();
     }
-
-    // Execute the command
     await command.execute(interaction);
   } catch (error) {
     logger.error(`Error executing ${interaction.commandName} command: ${error.message}`);
 
-    // If the interaction was already deferred or replied to, use followUp
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp({ content: 'There was an error while executing this command!', ephemeral: true });
     } else {
-      // Otherwise, reply normally
       await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
     }
   }
 });
-
-
-
-
-
 
 async function registerCommands() {
   const commands = [];
@@ -84,28 +90,22 @@ async function registerCommands() {
 
   try {
     logger.info('Started refreshing application (/) commands.');
-
     await rest.put(
       Routes.applicationGuildCommands(config.CLIENT_ID, config.SERVER_ID),
       { body: commands },
     );
-
     logger.info('Successfully reloaded application (/) commands.');
   } catch (error) {
     logger.error(error);
   }
 }
 
-
-console.log(setupAI);
-
-// Move setupPersistentMessage inside the ready event
 client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}!`);
   setupAI(client);
   const { setupPersistentMessage } = require('./persistentMessage.js');
 
-  setupPersistentMessage(client);  // Call after client is ready
+  setupPersistentMessage(client);
   registerCommands();
 });
 
