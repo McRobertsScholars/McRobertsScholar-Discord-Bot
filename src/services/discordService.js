@@ -1,23 +1,10 @@
-const { Client, GatewayIntentBits } = require('discord.js');
-const config = require('../utils/config.js');
-const logger = require('../utils/logger.js');
+// discordService.js
+const { startBot } = require('./bot.js');
 const { processScholarshipInfo } = require('./mistralService.js');
 const { insertScholarship } = require('./supabaseService.js');
+const logger = require('../utils/logger.js');
 
-// ❌ REMOVE this to avoid conflict
-// const { startBot } = require('./bot.js'); 
-
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
-});
-
-client.once('ready', () => {
-  logger.info(`✅ Logged in as ${client.user.tag}`);
-});
+startBot(); // ✅ Only called once
 
 client.on('messageCreate', async (message) => {
   logger.info(`📩 Received message: ${message.content}`);
@@ -45,4 +32,3 @@ client.on('messageCreate', async (message) => {
     }
   }
 });
-

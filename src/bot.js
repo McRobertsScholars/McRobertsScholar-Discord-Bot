@@ -111,13 +111,16 @@ client.once('ready', () => {
   registerCommands();
 });
 
-startBot();  // Call the startBot function to log in the bot
-
 function startBot() {
-  console.log("Bot is starting...");
-  client.login(config.DISCORD_TOKEN);
+  client.once('ready', () => {
+    logger.info(`✅ Logged in as ${client.user.tag}`);
+  });
+
+  client.login(config.DISCORD_TOKEN)
+    .then(() => logger.info('Bot successfully logged in'))
+    .catch(error => logger.error('Error logging in:', error));
 }
 
-module.exports = { startBot };
+module.exports = { startBot, client };
 
 

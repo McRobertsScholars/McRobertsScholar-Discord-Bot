@@ -1,10 +1,10 @@
-const { startBot } = require('./bot.js');
-const { startBot: startDiscordService } = require('./services/discordService.js');
+// index.js
+const { startBot } = require('./bot.js'); // Import startBot from bot.js
 const logger = require('./utils/logger.js');
 const express = require('express');
 const axios = require('axios');
 
-startBot(); // ✅ Called only once
+startBot(); // ✅ Only called once
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -24,7 +24,6 @@ setInterval(() => {
 app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
 
 try {
-  startDiscordService(); // ✅ Only calling startDiscordService()
   logger.info('Bot started successfully');
 } catch (error) {
   logger.error(`Error starting bot: ${error.message}`);
