@@ -29,6 +29,7 @@ for (const file of commandFiles) {
   }
 }
 
+
 // Interaction handler for slash commands
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
@@ -41,19 +42,20 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   try {
-    // Only defer the reply if it has not been already deferred or replied to
-    if (!interaction.deferred && !interaction.replied) {
-      await interaction.deferReply();
+    // Defer the reply only if it has not been already deferred or replied
+    if (!interaction.replied) {
+      if (!interaction.deferred) {
+        await interaction.deferReply();
+      }
     }
 
     // Execute the command
     await command.execute(interaction);
-
   } catch (error) {
     logger.error(`Error executing ${interaction.commandName} command: ${error.message}`);
 
     // If the interaction was already deferred or replied to, use followUp
-    if (interaction.deferred || interaction.replied) {
+    if (interaction.replied || interaction.deferred) {
       await interaction.followUp({ content: 'There was an error while executing this command!', ephemeral: true });
     } else {
       // Otherwise, reply normally
@@ -65,11 +67,17 @@ client.on('interactionCreate', async (interaction) => {
 
 
 
+
+
 async function registerCommands() {
   const commands = [];
   for (const file of commandFiles) {
     const command = require(`./commands/${file}`);
-    commands.push(command.data.toJSON());
+    if (command.data && command.execute) {
+      commands.push(command.data.toJSON());
+    } else {
+      logger.warn(`Command in file ${file} is missing data or execute.`);
+    }
   }
 
   const rest = new REST({ version: '10' }).setToken(config.DISCORD_TOKEN);
@@ -87,6 +95,7 @@ async function registerCommands() {
     logger.error(error);
   }
 }
+
 
 console.log(setupAI);
 
