@@ -6,8 +6,6 @@ const fetch = require('node-fetch');
 const config = require('./utils/config.js');
 const logger = require('./utils/logger.js');
 const { setupAI } = require('./ai');
-const { startBot } = require("./bot.js");
-
 
 const client = new Client({
   intents: [

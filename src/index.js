@@ -1,5 +1,6 @@
 // index.js
-const { startBot } = require('./bot.js'); // Import startBot from bot.js
+const { startBot } = require('./bot.js');
+
 const logger = require('./utils/logger.js');
 const express = require('express');
 const axios = require('axios');
