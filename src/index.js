@@ -6,7 +6,7 @@ const axios = require('axios');
 startBot(); // ✅ Only called once
 
 const app = express();
-const PORT = process.env.PORT || 3000; // Render may provide a dynamic port, so it's safer to rely on process.env.PORT
+const PORT = process.env.PORT || 3000; // Ensure Render provides a dynamic port
 
 app.get('/', (req, res) => {
   res.send('Bot is running!');
