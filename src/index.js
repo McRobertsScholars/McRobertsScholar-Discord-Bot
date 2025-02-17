@@ -8,7 +8,8 @@ const axios = require('axios');
 startBot(); // ✅ Only called once
 
 const app = express();
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 10001; // Change 10000 to 10001 or another unused port
+
 const WEBSITE_URL = "https://mcrobertsscholar-discord-bot.onrender.com"; // Replace with your actual Render URL
 
 app.get('/', (req, res) => {
