@@ -2,6 +2,9 @@ const { startBot, client } = require("./bot.js")
 const logger = require("./utils/logger.js")
 const express = require("express")
 const axios = require("axios")
+const { testMistralConnection } = require("./services/mistralService.js")
+const { testSupabaseConnection } = require("./services/supabaseService.js")
+const { setupDiscordService } = require("./services/discordService.js")
 
 // Express server setup
 const app = express()
@@ -15,8 +18,11 @@ app.get("/", (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`)
 
-  // Then start the bot
+  // Then start the bot and services
   startBot()
+  setupDiscordService()
+  testMistralConnection()
+  testSupabaseConnection()
 })
 
 // Keep-alive ping every 14 minutes

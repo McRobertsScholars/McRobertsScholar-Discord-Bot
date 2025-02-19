@@ -14,6 +14,10 @@ const client = new Client({
   ],
 })
 
+client.on("messageCreate", (message) => {
+  console.log(`Received message: ${message.content} in channel: ${message.channelId}`)
+})
+
 // Load commands
 client.commands = new Collection()
 const commandsPath = path.join(__dirname, "commands")
