@@ -5,14 +5,12 @@ const { getAllPageText } = require("./webScraper.js")
 
 async function processScholarshipInfo(url) {
   try {
-    // Get all text from the webpage
     const pageText = await getAllPageText(url)
 
     if (!pageText) {
       throw new Error("Could not fetch page content")
     }
 
-    // Extract information using AI
     const scholarshipInfo = await extractWithAI(url, pageText)
 
     if (!isValidScholarshipInfo(scholarshipInfo)) {
@@ -36,7 +34,6 @@ function isValidScholarshipInfo(info) {
   const hasRequirements = Array.isArray(info.requirements) && info.requirements.length > 0
   const hasDescription = info.description && info.description.length > 20
 
-  // Must have name and at least two other pieces of information
   return hasName && [hasAmount, hasDeadline, hasRequirements, hasDescription].filter(Boolean).length >= 2
 }
 
@@ -48,11 +45,19 @@ async function extractWithAI(url, pageText) {
       messages: [
         {
           role: "system",
-          content: `You are a scholarship information extractor. Your task is to analyze webpage content and extract ONLY explicitly stated scholarship information. Do not make assumptions or add information that isn't directly stated in the text.`,
+          content: `You are a scholarship information extractor. Your task is to analyze webpage content and extract ONLY explicitly stated scholarship information. Do not make assumptions or add information that isn't directly stated in the text.
+
+Rules:
+1. Only include information that appears in the text
+2. Use 'Not specified' for missing information
+3. Include ALL prize amounts if multiple exist
+4. Include the FULL deadline date if stated
+5. List ALL stated requirements
+6. Do not make assumptions or add information not in the text`,
         },
         {
           role: "user",
-          content: `Here is the text content from ${url}:
+          content: `Here is the structured text content from ${url}:
 
 ${pageText}
 
@@ -63,15 +68,7 @@ Extract the scholarship information and format it as JSON with these fields:
   "amount": "Exact prize/award amount with $ sign, or 'Not specified'",
   "description": "Brief description of the scholarship/contest",
   "requirements": ["List of specific requirements"]
-}
-
-Important rules:
-1. Only include information that appears in the text
-2. Use 'Not specified' for missing information
-3. Include ALL prize amounts if multiple exist
-4. Include the FULL deadline date if stated
-5. List ALL stated requirements
-6. Do not make assumptions or add information not in the text`,
+}`,
         },
       ],
       temperature: 0.1,

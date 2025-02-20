@@ -1,74 +1,75 @@
 const axios = require("axios")
 const cheerio = require("cheerio")
-const puppeteer = require("puppeteer")
 const logger = require("../utils/logger.js")
 
 async function getAllPageText(url) {
   try {
-    // Try regular HTTP request first
-    let content
-    try {
-      const response = await axios.get(url)
-      content = response.data
-    } catch (error) {
-      logger.info(`Axios request failed, trying Puppeteer: ${error.message}`)
-      content = await getTextWithPuppeteer(url)
-    }
+    // Configure axios with headers to avoid 403
+    const response = await axios.get(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        Connection: "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+      },
+      timeout: 10000,
+    })
 
-    if (!content) {
-      throw new Error("Failed to fetch page content")
-    }
-
-    const $ = cheerio.load(content)
+    const $ = cheerio.load(response.data)
 
     // Remove script and style elements
     $("script").remove()
     $("style").remove()
 
-    // Get all text content
-    const allText = $("body")
-      .text()
-      .replace(/\s+/g, " ") // Replace multiple spaces with single space
-      .trim()
+    // Get all text content with better structure
+    const sections = []
 
-    // Get page title
-    const pageTitle = $("title").text().trim()
+    // Get title
+    const title = $("title").text().trim()
+    if (title) sections.push(`TITLE: ${title}`)
 
     // Get meta description
-    const metaDescription = $('meta[name="description"]').attr("content") || ""
+    const metaDesc = $('meta[name="description"]').attr("content")
+    if (metaDesc) sections.push(`META DESCRIPTION: ${metaDesc}`)
 
-    // Combine all text with clear section markers
-    const fullText = `
-PAGE TITLE: ${pageTitle}
-
-META DESCRIPTION: ${metaDescription}
-
-PAGE CONTENT:
-${allText}
-    `.trim()
-
-    return fullText
-  } catch (error) {
-    logger.error(`Failed to get page text: ${error.message}`)
-    return null
-  }
-}
-
-async function getTextWithPuppeteer(url) {
-  let browser = null
-  try {
-    browser = await puppeteer.launch({
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-      headless: "new",
+    // Get headings
+    $("h1, h2, h3").each((_, elem) => {
+      const text = $(elem).text().trim()
+      if (text) sections.push(`HEADING: ${text}`)
     })
-    const page = await browser.newPage()
-    await page.goto(url, { waitUntil: "networkidle0", timeout: 30000 })
-    return await page.content()
+
+    // Get paragraphs
+    $("p").each((_, elem) => {
+      const text = $(elem).text().trim()
+      if (text) sections.push(`PARAGRAPH: ${text}`)
+    })
+
+    // Get list items
+    $("li").each((_, elem) => {
+      const text = $(elem).text().trim()
+      if (text) sections.push(`LIST ITEM: ${text}`)
+    })
+
+    // Get other visible text
+    $("div, span").each((_, elem) => {
+      const $elem = $(elem)
+      // Only get text from elements that don't have text-containing children
+      if ($elem.children().length === 0) {
+        const text = $elem.text().trim()
+        if (text && text.length > 5) sections.push(`TEXT: ${text}`)
+      }
+    })
+
+    return sections.join("\n\n")
   } catch (error) {
-    logger.error(`Puppeteer error: ${error.message}`)
-    return null
-  } finally {
-    if (browser) await browser.close()
+    if (error.response?.status === 403) {
+      logger.error(`Access forbidden (403) for URL: ${url}`)
+      throw new Error("Website access forbidden. Please verify the URL is publicly accessible.")
+    }
+    logger.error(`Failed to get page text: ${error.message}`)
+    throw error
   }
 }
 

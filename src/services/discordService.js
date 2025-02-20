@@ -6,6 +6,7 @@ const config = require("../utils/config.js")
 
 client.on("messageCreate", async (message) => {
   if (message.channelId === config.CHANNEL_ID && message.content.includes("http")) {
+    let processingMsg = null
     try {
       const urlMatch = message.content.match(/(https?:\/\/[^\s]+)/g)
       if (!urlMatch) {
@@ -14,7 +15,7 @@ client.on("messageCreate", async (message) => {
       }
 
       const url = urlMatch[0]
-      const processingMsg = await message.reply("🔍 Processing scholarship information... Please wait.")
+      processingMsg = await message.reply("🔍 Processing scholarship information... Please wait.")
 
       const scholarshipInfo = await processScholarshipInfo(url)
 
@@ -49,7 +50,7 @@ client.on("messageCreate", async (message) => {
         },
       }
 
-      // Edit the processing message instead of sending a new one
+      // Edit the processing message
       await processingMsg.edit({
         content: "Found scholarship information:",
         embeds: [previewEmbed],
@@ -62,15 +63,14 @@ client.on("messageCreate", async (message) => {
     } catch (error) {
       logger.error(`Error processing message: ${error.message}`)
 
-      // If we have a processing message, edit it
+      const errorMessage = error.message.includes("403")
+        ? "❌ Sorry, this website is blocking automated access. Please try a different URL or contact an administrator."
+        : "❌ Sorry, I couldn't process this scholarship. Please verify the URL is accessible and contains scholarship details."
+
       if (processingMsg) {
-        await processingMsg.edit(
-          "❌ Sorry, I couldn't process this scholarship. Please verify the URL is accessible and contains scholarship details.",
-        )
+        await processingMsg.edit(errorMessage)
       } else {
-        await message.reply(
-          "❌ Sorry, I couldn't process this scholarship. Please verify the URL is accessible and contains scholarship details.",
-        )
+        await message.reply(errorMessage)
       }
     }
   }
