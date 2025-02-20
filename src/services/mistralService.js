@@ -38,14 +38,14 @@ function isValidScholarshipInfo(info) {
 }
 
 async function extractWithAI(url, pageText) {
-  const response = await axios.post(
-    "https://api.mistral.ai/v1/chat/completions",
-    {
-      model: "mistral-tiny",
-      messages: [
-        {
-          role: "system",
-          content: `You are a scholarship information extractor. Your task is to analyze webpage content and extract ONLY explicitly stated scholarship information. Do not make assumptions or add information that isn't directly stated in the text.
+  const systemPrompt = `You are a scholarship information extractor. Your task is to analyze webpage content and extract ONLY explicitly stated scholarship information. Do not make assumptions or add information that isn't directly stated in the text.
+
+Special instructions for Fraser Institute Essay Contest:
+- This is a prestigious essay contest with cash prizes
+- Look for specific prize amounts, if stated
+- Note any submission deadlines
+- Include essay topic and requirements
+- Focus on academic and submission requirements
 
 Rules:
 1. Only include information that appears in the text
@@ -53,11 +53,20 @@ Rules:
 3. Include ALL prize amounts if multiple exist
 4. Include the FULL deadline date if stated
 5. List ALL stated requirements
-6. Do not make assumptions or add information not in the text`,
+6. Do not make assumptions or add information not in the text`
+
+  const response = await axios.post(
+    "https://api.mistral.ai/v1/chat/completions",
+    {
+      model: "mistral-tiny",
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt,
         },
         {
           role: "user",
-          content: `Here is the structured text content from ${url}:
+          content: `Here is the text content from ${url}:
 
 ${pageText}
 

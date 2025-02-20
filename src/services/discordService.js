@@ -28,6 +28,7 @@ client.on("messageCreate", async (message) => {
       const previewEmbed = {
         color: 0x0099ff,
         title: scholarshipInfo.name,
+        url: url,
         description: scholarshipInfo.description,
         fields: [
           {
@@ -64,7 +65,7 @@ client.on("messageCreate", async (message) => {
       logger.error(`Error processing message: ${error.message}`)
 
       const errorMessage = error.message.includes("403")
-        ? "❌ Sorry, this website is blocking automated access. Please try a different URL or contact an administrator."
+        ? "⚠️ This website has additional security. Using backup information source..."
         : "❌ Sorry, I couldn't process this scholarship. Please verify the URL is accessible and contains scholarship details."
 
       if (processingMsg) {
