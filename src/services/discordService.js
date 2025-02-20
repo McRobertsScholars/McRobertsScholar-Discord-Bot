@@ -5,41 +5,63 @@ const logger = require("../utils/logger.js")
 const config = require("../utils/config.js")
 
 client.on("messageCreate", async (message) => {
-  if (message.channelId === config.CHANNEL_ID) {
-    if (message.content.includes("http")) {
-      try {
-        const urlMatch = message.content.match(/(https?:\/\/[^\s]+)/g)
-        if (!urlMatch) {
-          await message.reply("Please provide a valid scholarship URL.")
-          return
-        }
-
-        const url = urlMatch[0]
-        await message.reply("Processing scholarship information... Please wait.")
-
-        const scholarshipInfo = await processScholarshipInfo(url)
-
-        // Create a preview message
-        const previewMessage = `
-Found scholarship information:
-• Name: ${scholarshipInfo.name}
-• Amount: ${scholarshipInfo.amount}
-• Deadline: ${scholarshipInfo.deadline}
-• Description: ${scholarshipInfo.description}
-• Requirements: ${scholarshipInfo.requirements.join(", ")}
-
-Adding to database...`
-
-        await message.reply(previewMessage)
-
-        await insertScholarship({ ...scholarshipInfo, link: url })
-        await message.reply("✅ Scholarship information has been successfully added to the database!")
-      } catch (error) {
-        logger.error(`Error processing message: ${error.message}`)
-        await message.reply(
-          "Sorry, I couldn't extract the scholarship information. Please make sure the URL is accessible and contains scholarship details.",
-        )
+  if (message.channelId === config.CHANNEL_ID && message.content.includes("http")) {
+    try {
+      const urlMatch = message.content.match(/(https?:\/\/[^\s]+)/g)
+      if (!urlMatch) {
+        await message.reply("Please provide a valid scholarship URL.")
+        return
       }
+
+      const url = urlMatch[0]
+      const processingMsg = await message.reply("🔍 Processing scholarship information... Please wait.")
+
+      const scholarshipInfo = await processScholarshipInfo(url)
+
+      // Format requirements for display
+      const requirementsList = Array.isArray(scholarshipInfo.requirements)
+        ? scholarshipInfo.requirements.map((r) => `• ${r}`).join("\n")
+        : "Not specified"
+
+      // Create detailed preview message
+      const previewEmbed = {
+        color: 0x0099ff,
+        title: scholarshipInfo.name,
+        description: scholarshipInfo.description,
+        fields: [
+          {
+            name: "💰 Amount",
+            value: scholarshipInfo.amount || "Not specified",
+            inline: true,
+          },
+          {
+            name: "📅 Deadline",
+            value: scholarshipInfo.deadline || "Not specified",
+            inline: true,
+          },
+          {
+            name: "📋 Requirements",
+            value: requirementsList,
+          },
+        ],
+        footer: {
+          text: "Scholarship information extracted automatically",
+        },
+      }
+
+      await processingMsg.edit({
+        content: "Found scholarship information:",
+        embeds: [previewEmbed],
+      })
+
+      await insertScholarship({ ...scholarshipInfo, link: url })
+
+      await message.reply("✅ Scholarship has been added to the database!")
+    } catch (error) {
+      logger.error(`Error processing message: ${error.message}`)
+      await message.reply(
+        "❌ Sorry, I couldn't process this scholarship. Please verify the URL is accessible and contains scholarship details.",
+      )
     }
   }
 })
