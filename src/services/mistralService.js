@@ -1,29 +1,25 @@
 const axios = require("axios")
 const config = require("../utils/config.js")
 const logger = require("../utils/logger.js")
-const { scrapeWebpage } = require("./webScraper.js")
+const { getAllPageText } = require("./webScraper.js")
 
 async function processScholarshipInfo(url) {
   try {
-    // First try web scraping
-    logger.info(`Attempting to scrape ${url}`)
-    const scrapedInfo = await scrapeWebpage(url)
+    // Get all text from the webpage
+    const pageText = await getAllPageText(url)
 
-    if (scrapedInfo && isValidScholarshipInfo(scrapedInfo)) {
-      logger.info("Using scraped information")
-      return scrapedInfo
+    if (!pageText) {
+      throw new Error("Could not fetch page content")
     }
 
-    // If scraping failed or missed critical info, try AI
-    logger.info("Scraping incomplete, trying AI extraction")
-    const aiInfo = await extractWithAI(url, scrapedInfo)
+    // Extract information using AI
+    const scholarshipInfo = await extractWithAI(url, pageText)
 
-    if (isValidScholarshipInfo(aiInfo)) {
-      logger.info("Using AI-extracted information")
-      return aiInfo
+    if (!isValidScholarshipInfo(scholarshipInfo)) {
+      throw new Error("Could not extract valid scholarship information")
     }
 
-    throw new Error("Could not extract sufficient scholarship information")
+    return scholarshipInfo
   } catch (error) {
     logger.error(`Error processing scholarship info: ${error.message}`)
     throw error
@@ -35,8 +31,8 @@ function isValidScholarshipInfo(info) {
 
   // Check if we have the minimum required information
   const hasName = info.name && info.name.length > 5
-  const hasAmount = info.amount && /\$/.test(info.amount)
-  const hasDeadline = info.deadline && /\d{4}/.test(info.deadline)
+  const hasAmount = info.amount && (info.amount.includes("$") || info.amount === "Not specified")
+  const hasDeadline = info.deadline && (info.deadline.length > 5 || info.deadline === "Not specified")
   const hasRequirements = Array.isArray(info.requirements) && info.requirements.length > 0
   const hasDescription = info.description && info.description.length > 20
 
@@ -44,7 +40,7 @@ function isValidScholarshipInfo(info) {
   return hasName && [hasAmount, hasDeadline, hasRequirements, hasDescription].filter(Boolean).length >= 2
 }
 
-async function extractWithAI(url, scrapedInfo = null) {
+async function extractWithAI(url, pageText) {
   const response = await axios.post(
     "https://api.mistral.ai/v1/chat/completions",
     {
@@ -52,31 +48,34 @@ async function extractWithAI(url, scrapedInfo = null) {
       messages: [
         {
           role: "system",
-          content: `You are a scholarship information extractor. Extract ONLY explicitly stated information from the webpage.
-          ${scrapedInfo ? `Previously scraped partial information: ${JSON.stringify(scrapedInfo)}` : ""}`,
+          content: `You are a scholarship information extractor. Your task is to analyze webpage content and extract ONLY explicitly stated scholarship information. Do not make assumptions or add information that isn't directly stated in the text.`,
         },
         {
           role: "user",
-          content: `Visit ${url} and extract scholarship information.
-          
-          Required format:
-          {
-            "name": "Exact scholarship name",
-            "deadline": "Complete deadline date",
-            "amount": "Exact amount with $ sign",
-            "description": "Brief description",
-            "requirements": ["List of requirements"]
-          }
-          
-          Rules:
-          1. Only include information directly stated on the page
-          2. Use null for missing information
-          3. Do not make assumptions
-          4. Include currency symbols
-          5. Use complete dates`,
+          content: `Here is the text content from ${url}:
+
+${pageText}
+
+Extract the scholarship information and format it as JSON with these fields:
+{
+  "name": "Exact scholarship/contest name",
+  "deadline": "Exact deadline date if stated, or 'Not specified'",
+  "amount": "Exact prize/award amount with $ sign, or 'Not specified'",
+  "description": "Brief description of the scholarship/contest",
+  "requirements": ["List of specific requirements"]
+}
+
+Important rules:
+1. Only include information that appears in the text
+2. Use 'Not specified' for missing information
+3. Include ALL prize amounts if multiple exist
+4. Include the FULL deadline date if stated
+5. List ALL stated requirements
+6. Do not make assumptions or add information not in the text`,
         },
       ],
       temperature: 0.1,
+      max_tokens: 1000,
     },
     {
       headers: {
@@ -86,20 +85,7 @@ async function extractWithAI(url, scrapedInfo = null) {
     },
   )
 
-  const aiResult = JSON.parse(response.data.choices[0].message.content)
-
-  // Merge results, preferring scraped values when available
-  if (scrapedInfo) {
-    return {
-      name: scrapedInfo.name || aiResult.name,
-      deadline: scrapedInfo.deadline || aiResult.deadline,
-      amount: scrapedInfo.amount || aiResult.amount,
-      description: scrapedInfo.description || aiResult.description,
-      requirements: scrapedInfo.requirements.length ? scrapedInfo.requirements : aiResult.requirements,
-    }
-  }
-
-  return aiResult
+  return JSON.parse(response.data.choices[0].message.content)
 }
 
 module.exports = {

@@ -23,7 +23,7 @@ client.on("messageCreate", async (message) => {
         ? scholarshipInfo.requirements.map((r) => `• ${r}`).join("\n")
         : "Not specified"
 
-      // Create detailed preview message
+      // Create preview message
       const previewEmbed = {
         color: 0x0099ff,
         title: scholarshipInfo.name,
@@ -49,6 +49,7 @@ client.on("messageCreate", async (message) => {
         },
       }
 
+      // Edit the processing message instead of sending a new one
       await processingMsg.edit({
         content: "Found scholarship information:",
         embeds: [previewEmbed],
@@ -56,12 +57,21 @@ client.on("messageCreate", async (message) => {
 
       await insertScholarship({ ...scholarshipInfo, link: url })
 
+      // Send confirmation as a follow-up message
       await message.reply("✅ Scholarship has been added to the database!")
     } catch (error) {
       logger.error(`Error processing message: ${error.message}`)
-      await message.reply(
-        "❌ Sorry, I couldn't process this scholarship. Please verify the URL is accessible and contains scholarship details.",
-      )
+
+      // If we have a processing message, edit it
+      if (processingMsg) {
+        await processingMsg.edit(
+          "❌ Sorry, I couldn't process this scholarship. Please verify the URL is accessible and contains scholarship details.",
+        )
+      } else {
+        await message.reply(
+          "❌ Sorry, I couldn't process this scholarship. Please verify the URL is accessible and contains scholarship details.",
+        )
+      }
     }
   }
 })
