@@ -2,13 +2,13 @@ const { startBot, client } = require("./bot.js")
 const logger = require("./utils/logger.js")
 const express = require("express")
 const axios = require("axios")
-const { testMistralConnection } = require("./services/mistralService.js")
-const { testSupabaseConnection } = require("./services/supabaseService.js")
 const { setupDiscordService } = require("./services/discordService.js")
+const { setupMistralService } = require("./services/mistralService.js")
+const { testSupabaseConnection } = require("./services/supabaseService.js")
 
 // Express server setup
 const app = express()
-const PORT = process.env.PORT || 3000
+const PORT = process.env.PORT || 10000
 
 app.get("/", (req, res) => {
   res.send("Bot is running!")
@@ -21,7 +21,7 @@ app.listen(PORT, () => {
   // Then start the bot and services
   startBot()
   setupDiscordService()
-  testMistralConnection()
+  setupMistralService() // Changed from testMistralConnection to setupMistralService
   testSupabaseConnection()
 })
 
