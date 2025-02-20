@@ -3,22 +3,18 @@ const cheerio = require("cheerio")
 const logger = require("../utils/logger.js")
 const https = require("https")
 
-// Rotating User Agents
 const USER_AGENTS = [
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 Edg/91.0.864.59",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 ]
 
 async function fetchWithRetry(url, options = {}, retries = 3) {
   const instance = axios.create({
     httpsAgent: new https.Agent({
       rejectUnauthorized: false,
-      secureOptions: crypto.constants?.SSL_OP_LEGACY_SERVER_CONNECT,
     }),
     timeout: 30000,
+    maxRedirects: 5,
     validateStatus: (status) => status < 500,
   })
 
@@ -29,12 +25,7 @@ async function fetchWithRetry(url, options = {}, retries = 3) {
         "User-Agent": userAgent,
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
-        "Accept-Encoding": "gzip, deflate, br",
-        Connection: "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Cache-Control": "max-age=0",
-        TE: "Trailers",
-        DNT: "1",
+        "Cache-Control": "no-cache",
       }
 
       const response = await instance.get(url, {
@@ -42,12 +33,15 @@ async function fetchWithRetry(url, options = {}, retries = 3) {
         headers: { ...headers, ...options.headers },
       })
 
-      if (response.status === 403) {
-        throw new Error("403 Forbidden")
+      // Check if we got a valid HTML response
+      const contentType = response.headers["content-type"]
+      if (!contentType || !contentType.includes("text/html")) {
+        throw new Error("Invalid content type")
       }
 
       return response
     } catch (error) {
+      logger.error(`Attempt ${i + 1} failed: ${error.message}`)
       if (i === retries - 1) throw error
       await new Promise((resolve) => setTimeout(resolve, Math.pow(2, i) * 1000))
     }
@@ -59,104 +53,134 @@ async function getAllPageText(url) {
     const response = await fetchWithRetry(url)
     const $ = cheerio.load(response.data)
 
-    // Remove script and style elements
-    $("script").remove()
-    $("style").remove()
+    // Remove unwanted elements
+    $("script, style, iframe, nav, footer, .navigation, .menu, .sidebar, .ads, .cookie, .popup").remove()
 
-    // Extract structured content
-    const content = {
-      title: [],
-      headings: [],
-      paragraphs: [],
-      lists: [],
-      metadata: [],
+    // Get all text content from the page
+    let allText = ""
+
+    // Process main content areas first
+    $("main, article, .content, .main, #main, #content, .post, .entry").each((_, elem) => {
+      allText += $(elem).text() + "\n"
+    })
+
+    // If no main content found, get text from body
+    if (!allText.trim()) {
+      // Get text from all relevant elements
+      $("body")
+        .find("h1, h2, h3, h4, h5, h6, p, li, td, th, div:not(:empty)")
+        .each((_, elem) => {
+          const text = $(elem).text().trim()
+          if (text) allText += text + "\n"
+        })
     }
 
-    // Get title and meta description
-    content.title.push($("title").text().trim())
-    $('meta[name="description"]').each((_, elem) => {
-      content.metadata.push($(elem).attr("content"))
-    })
+    // Clean up the text
+    allText = allText
+      .replace(/\s+/g, " ")
+      .replace(/\n\s*\n/g, "\n")
+      .trim()
 
-    // Get headings
-    $("h1, h2, h3, h4, h5, h6").each((_, elem) => {
-      const text = $(elem).text().trim()
-      if (text) content.headings.push(text)
-    })
+    // Extract potential scholarship information
+    const info = extractScholarshipInfo(allText, $)
 
-    // Get paragraphs
-    $("p").each((_, elem) => {
-      const text = $(elem).text().trim()
-      if (text) content.paragraphs.push(text)
-    })
-
-    // Get lists
-    $("ul li, ol li").each((_, elem) => {
-      const text = $(elem).text().trim()
-      if (text) content.lists.push(text)
-    })
-
-    // Combine all content with clear section markers
-    const sections = [
-      "TITLE:",
-      ...content.title,
-      "",
-      "META DESCRIPTION:",
-      ...content.metadata,
-      "",
-      "HEADINGS:",
-      ...content.headings,
-      "",
-      "MAIN CONTENT:",
-      ...content.paragraphs,
-      "",
-      "LIST ITEMS:",
-      ...content.lists,
-    ]
-
-    return sections.join("\n")
+    // Format the output
+    return formatOutput(info, allText)
   } catch (error) {
-    if (error.message.includes("403")) {
-      // If we get a 403, try an alternative method
-      return await getTextFromAlternativeSources(url)
-    }
+    logger.error(`Error in getAllPageText: ${error.message}`)
     throw error
   }
 }
 
-async function getTextFromAlternativeSources(url) {
-  // Try to extract domain and path
-  const urlObj = new URL(url)
-  const domain = urlObj.hostname
-  const path = urlObj.pathname
-
-  // For Fraser Institute specifically
-  if (domain === "www.fraserinstitute.org") {
-    return `
-TITLE:
-Student Essay Contest 2025
-
-MAIN CONTENT:
-The Fraser Institute's 2025 Student Essay Contest is NOW OPEN!
-The Fraser Institute hosts an annual Student Essay Contest to promote student participation in economic discourse on current events and public policy.
-
-DETAILS:
-- Cash prizes for the top five winning submissions
-- Opportunity to have work peer-reviewed and published
-- Topic: "What would the Essential Scholars say about Canadian economic prosperity today?"
-
-REQUIREMENTS:
-- Open to all students
-- Essay must address the given topic
-- Must follow academic writing standards
-- Submission deadline: Check website for current deadline
-- Word count requirements apply
-
-For complete details and submission guidelines, please visit the official contest page.
-    `.trim()
+function extractScholarshipInfo(text, $) {
+  const info = {
+    title: "",
+    deadlines: [],
+    amounts: [],
+    requirements: [],
   }
 
-  throw new Error("Could not access website content")
+  // Extract title (try different approaches)
+  info.title = $("h1").first().text().trim() || $("title").text().trim() || text.split("\n")[0]
+
+  // Find deadlines using various patterns
+  const deadlinePatterns = [
+    /(?:deadline|due|submit by|closes on|end(?:s|ing) on|application due)(?:\s*:?\s*)([A-Za-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})/gi,
+    /([A-Za-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})(?:\s*(?:deadline|due date))/gi,
+  ]
+
+  deadlinePatterns.forEach((pattern) => {
+    const matches = text.match(pattern)
+    if (matches) {
+      info.deadlines.push(...matches)
+    }
+  })
+
+  // Find amounts/prizes
+  const amountPatterns = [
+    /\$\s*\d{1,3}(?:,\d{3})*(?:\.\d{2})?/g,
+    /(?:prize|award|scholarship)(?:\s*of\s*|\s*:\s*)\$\s*\d{1,3}(?:,\d{3})*(?:\.\d{2})?/gi,
+    /\d{1,3}(?:,\d{3})*\s+dollars/gi,
+  ]
+
+  amountPatterns.forEach((pattern) => {
+    const matches = text.match(pattern)
+    if (matches) {
+      info.amounts.push(...matches)
+    }
+  })
+
+  // Find requirements
+  const requirementMarkers = [
+    "must",
+    "should",
+    "need to",
+    "required to",
+    "eligibility",
+    "requirements",
+    "criteria",
+    "eligible",
+    "qualify",
+  ]
+
+  const sentences = text.match(/[^.!?]+[.!?]+/g) || []
+  sentences.forEach((sentence) => {
+    if (requirementMarkers.some((marker) => sentence.toLowerCase().includes(marker))) {
+      const requirement = sentence.trim()
+      if (requirement.length < 200) {
+        // Avoid overly long requirements
+        info.requirements.push(requirement)
+      }
+    }
+  })
+
+  return info
+}
+
+function formatOutput(info, fullText) {
+  // Remove duplicates
+  info.deadlines = [...new Set(info.deadlines)]
+  info.amounts = [...new Set(info.amounts)]
+  info.requirements = [...new Set(info.requirements)]
+
+  const output = [
+    "TITLE:",
+    info.title || "Unknown Scholarship",
+    "",
+    "DEADLINES FOUND:",
+    info.deadlines.length ? info.deadlines.join("\n") : "No specific deadline found",
+    "",
+    "AMOUNTS/PRIZES FOUND:",
+    info.amounts.length ? info.amounts.join("\n") : "No specific amount found",
+    "",
+    "REQUIREMENTS FOUND:",
+    info.requirements.length ? info.requirements.join("\n") : "No specific requirements found",
+    "",
+    "FULL CONTENT:",
+    fullText.substring(0, 1000), // Limit full content to first 1000 characters
+  ]
+
+  return output.join("\n")
 }
 
 module.exports = { getAllPageText }
