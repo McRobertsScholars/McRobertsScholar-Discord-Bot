@@ -14,10 +14,6 @@ const client = new Client({
   ],
 })
 
-client.on("messageCreate", (message) => {
-  console.log(`Received message: ${message.content} in channel: ${message.channelId}`)
-})
-
 // Load commands
 client.commands = new Collection()
 const commandsPath = path.join(__dirname, "commands")
@@ -45,17 +41,21 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   try {
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.deferReply()
-    }
+    // Remove the duplicate deferReply check since commands should handle their own replies
     await command.execute(interaction)
   } catch (error) {
     logger.error(`Error executing ${interaction.commandName} command: ${error.message}`)
 
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ content: "There was an error while executing this command!", ephemeral: true })
-    } else {
-      await interaction.reply({ content: "There was an error while executing this command!", ephemeral: true })
+    // Only reply if we haven't replied to this interaction yet
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction
+        .reply({
+          content: "There was an error while executing this command!",
+          ephemeral: true,
+        })
+        .catch((err) => {
+          logger.error(`Failed to send error message: ${err.message}`)
+        })
     }
   }
 })

@@ -1,96 +1,105 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const logger = require('../utils/logger');
-const { getAllScholarships } = require('../services/supabaseService');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js")
+const logger = require("../utils/logger")
+const { getAllScholarships } = require("../services/supabaseService")
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('scholarships')
-    .setDescription('Displays available scholarships'),
+  data: new SlashCommandBuilder().setName("scholarships").setDescription("Displays available scholarships"),
 
   async execute(interaction) {
     try {
-      // Defer the reply immediately to avoid errors
-      if (!interaction.deferred && !interaction.replied) {
-        await interaction.deferReply({ ephemeral: true });
-      }
+      // Always defer the reply first
+      await interaction.deferReply({ ephemeral: true })
 
-      const scholarships = await getAllScholarships();
+      const scholarships = await getAllScholarships()
 
       if (!scholarships || scholarships.length === 0) {
-        return await interaction.editReply({ content: 'No scholarships found.' });
+        return await interaction.editReply({ content: "No scholarships found." })
       }
 
-      let currentIndex = 0;
+      let currentIndex = 0
 
       const createEmbed = (scholarship) => {
         return new EmbedBuilder()
-          .setColor('#0099ff')
+          .setColor("#0099ff")
           .setTitle(scholarship.name)
           .addFields(
-            { name: 'Deadline', value: scholarship.deadline || 'Not specified' },
-            { name: 'Amount', value: scholarship.amount || 'Not specified' },
-            { name: 'Description', value: scholarship.description || 'Not available' },
-            { name: 'Requirements', value: scholarship.requirements || 'Not specified' }
+            { name: "Deadline", value: scholarship.deadline || "Not specified" },
+            { name: "Amount", value: scholarship.amount || "Not specified" },
+            { name: "Description", value: scholarship.description || "Not available" },
+            {
+              name: "Requirements",
+              value: Array.isArray(scholarship.requirements)
+                ? scholarship.requirements.join("\n")
+                : scholarship.requirements || "Not specified",
+            },
           )
           .setURL(scholarship.link)
-          .setFooter({ text: `Scholarship ${currentIndex + 1} of ${scholarships.length}` });
-      };
+          .setFooter({ text: `Scholarship ${currentIndex + 1} of ${scholarships.length}` })
+      }
 
       const createButtons = () => {
-        return new ActionRowBuilder()
-          .addComponents(
-            new ButtonBuilder()
-              .setCustomId('previous')
-              .setLabel('Previous')
-              .setStyle(ButtonStyle.Primary)
-              .setDisabled(currentIndex === 0),
-            new ButtonBuilder()
-              .setCustomId('next')
-              .setLabel('Next')
-              .setStyle(ButtonStyle.Primary)
-              .setDisabled(currentIndex === scholarships.length - 1)
-          );
-      };
+        return new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("previous")
+            .setLabel("Previous")
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(currentIndex === 0),
+          new ButtonBuilder()
+            .setCustomId("next")
+            .setLabel("Next")
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(currentIndex === scholarships.length - 1),
+        )
+      }
 
-      const initialEmbed = createEmbed(scholarships[currentIndex]);
-      const initialButtons = createButtons();
+      const initialEmbed = createEmbed(scholarships[currentIndex])
+      const initialButtons = createButtons()
 
-      const response = await interaction.editReply({
+      const message = await interaction.editReply({
         embeds: [initialEmbed],
-        components: [initialButtons]
-      });
+        components: [initialButtons],
+      })
 
-      const collector = response.createMessageComponentCollector({ time: 60000 });
+      const collector = message.createMessageComponentCollector({ time: 60000 })
 
-      collector.on('collect', async (i) => {
-        if (i.customId === 'previous') {
-          currentIndex--;
-        } else if (i.customId === 'next') {
-          currentIndex++;
+      collector.on("collect", async (i) => {
+        // Verify that the button click came from the command user
+        if (i.user.id !== interaction.user.id) {
+          await i.reply({ content: "This button is not for you!", ephemeral: true })
+          return
         }
 
-        const newEmbed = createEmbed(scholarships[currentIndex]);
-        const newButtons = createButtons();
+        if (i.customId === "previous") {
+          currentIndex = Math.max(0, currentIndex - 1)
+        } else if (i.customId === "next") {
+          currentIndex = Math.min(scholarships.length - 1, currentIndex + 1)
+        }
+
+        const newEmbed = createEmbed(scholarships[currentIndex])
+        const newButtons = createButtons()
 
         await i.update({
           embeds: [newEmbed],
-          components: [newButtons]
-        });
-      });
+          components: [newButtons],
+        })
+      })
 
-      collector.on('end', () => {
-        interaction.editReply({ components: [] }).catch(err => logger.warn("Could not clear buttons:", err));
-      });
-
+      collector.on("end", () => {
+        // Use try-catch to handle potential errors when removing buttons
+        try {
+          interaction.editReply({ components: [] }).catch((err) => logger.warn("Could not clear buttons:", err))
+        } catch (error) {
+          logger.warn("Could not clear buttons after timeout:", error)
+        }
+      })
     } catch (error) {
-      logger.error(`Error executing scholarships command: ${error.message}`);
+      logger.error(`Error executing scholarships command: ${error.message}`)
 
-      // Ensure we don't try to reply if it's already handled
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: 'There was an error retrieving scholarships.', ephemeral: true });
-      } else {
-        await interaction.editReply({ content: 'There was an error retrieving scholarships.' }).catch(err => logger.warn("Could not edit reply:", err));
+      // Only edit reply if we've already deferred
+      if (interaction.deferred) {
+        await interaction.editReply({ content: "There was an error retrieving scholarships." })
       }
     }
-  }
-};
+  },
+}
+
