@@ -1,79 +1,100 @@
 const axios = require("axios")
 const config = require("../utils/config.js")
 const logger = require("../utils/logger.js")
-
-// Setup function that includes the test
-async function setupMistralService() {
-  try {
-    const response = await axios.post(
-      "https://api.mistral.ai/v1/chat/completions",
-      {
-        model: "mistral-tiny",
-        messages: [
-          {
-            role: "user",
-            content: "Hello, are you working?",
-          },
-        ],
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${config.MISTRAL_API_KEY}`,
-        },
-      },
-    )
-    logger.info("Mistral API test successful")
-    logger.info(`Mistral response: ${response.data.choices[0].message.content}`)
-  } catch (error) {
-    logger.error(`Mistral API test failed: ${error.message}`)
-  }
-}
+const { scrapeWebpage } = require("./webScraper.js")
 
 async function processScholarshipInfo(url) {
   try {
-    const response = await axios.post(
-      "https://api.mistral.ai/v1/chat/completions",
-      {
-        model: "mistral-tiny",
-        messages: [
-          {
-            role: "system",
-            content: `You are a precise scholarship information extractor. Extract ONLY explicitly stated information from the webpage.`,
-          },
-          {
-            role: "user",
-            content: `Extract scholarship information from ${url}. Return ONLY information that is explicitly stated on the page in this JSON format:
-            {
-              "name": "Full scholarship name",
-              "deadline": "Complete deadline date",
-              "amount": "Exact amount with $ sign",
-              "description": "Brief description",
-              "requirements": ["List of requirements"]
-            }`,
-          },
-        ],
-        temperature: 0.1,
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${config.MISTRAL_API_KEY}`,
-        },
-      },
-    )
+    // First try web scraping
+    const scrapedInfo = await scrapeWebpage(url)
 
-    const result = JSON.parse(response.data.choices[0].message.content)
-    logger.info(`Successfully extracted scholarship info: ${JSON.stringify(result)}`)
-    return result
+    if (scrapedInfo && isValidScholarshipInfo(scrapedInfo)) {
+      logger.info("Using scraped information")
+      return scrapedInfo
+    }
+
+    // If scraping failed or missed critical info, try AI as backup
+    logger.info("Scraping incomplete, falling back to AI")
+    return await extractWithAI(url, scrapedInfo)
   } catch (error) {
     logger.error(`Error processing scholarship info: ${error.message}`)
     throw error
   }
 }
 
+function isValidScholarshipInfo(info) {
+  if (!info) return false
+
+  // Check if we have the minimum required information
+  const hasName = info.name && info.name !== "Scholarship Opportunity"
+  const hasAmount = info.amount && info.amount.includes("$")
+  const hasDeadline = info.deadline && /\d{4}/.test(info.deadline) // Contains a year
+  const hasRequirements = Array.isArray(info.requirements) && info.requirements.length > 0
+
+  return hasName && (hasAmount || hasDeadline) && hasRequirements
+}
+
+async function extractWithAI(url, scrapedInfo = null) {
+  const response = await axios.post(
+    "https://api.mistral.ai/v1/chat/completions",
+    {
+      model: "mistral-tiny",
+      messages: [
+        {
+          role: "system",
+          content: `You are a precise scholarship information extractor. Extract ONLY information that is explicitly stated on the webpage. Do not make assumptions or add information that isn't there.
+          
+          ${scrapedInfo ? `Previously scraped information: ${JSON.stringify(scrapedInfo)}` : ""}`,
+        },
+        {
+          role: "user",
+          content: `Visit this scholarship page and extract ONLY the explicitly stated information: ${url}
+          
+          Required format:
+          {
+            "name": "Exact scholarship name as shown",
+            "deadline": "Complete deadline date if stated",
+            "amount": "Exact amount with $ sign if stated",
+            "description": "Brief description from the page",
+            "requirements": ["List of stated requirements"]
+          }
+          
+          Important:
+          - Only include information directly stated on the page
+          - Use null for missing information
+          - Do not make assumptions or add information`,
+        },
+      ],
+      temperature: 0.1,
+    },
+    {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.MISTRAL_API_KEY}`,
+      },
+    },
+  )
+
+  const aiResult = JSON.parse(response.data.choices[0].message.content)
+
+  // Merge results, preferring scraped values when available
+  if (scrapedInfo) {
+    return {
+      name: scrapedInfo.name || aiResult.name,
+      deadline: scrapedInfo.deadline || aiResult.deadline,
+      amount: scrapedInfo.amount || aiResult.amount,
+      description: scrapedInfo.description || aiResult.description,
+      requirements: scrapedInfo.requirements.length ? scrapedInfo.requirements : aiResult.requirements,
+    }
+  }
+
+  return aiResult
+}
+
 module.exports = {
-  setupMistralService,
   processScholarshipInfo,
+  setupMistralService: async () => {
+    logger.info("Mistral service initialized")
+  },
 }
 
