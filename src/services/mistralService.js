@@ -11,17 +11,18 @@ async function processScholarshipInfo(url) {
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that extracts scholarship information from web pages.",
+            content:
+              "You are a precise assistant that extracts scholarship information from web pages. Only extract information that is explicitly stated on the page. If information is not found or unclear, use 'Not specified' as the value.",
           },
           {
             role: "user",
             content: `Please extract the following information from this scholarship page: ${url}
-          - name
-          - deadline  
-          - amount
-          - description
-          - requirements
-          Format the response as a JSON object with these fields. `,
+            - name: The full name of the scholarship
+            - deadline: The exact deadline date in YYYY-MM-DD format. If not found, use 'Not specified'
+            - amount: The exact amount of the scholarship. If a range, provide the full range
+            - description: A brief description of the scholarship
+            - requirements: A list of key requirements for applicants
+            Format the response as a JSON object with these fields. Do not invent or assume any information not explicitly stated on the page.`,
           },
         ],
       },
@@ -68,5 +69,19 @@ async function testMistralConnection() {
   }
 }
 
-module.exports = { processScholarshipInfo, testMistralConnection }
+function validateScholarshipInfo(info) {
+  const requiredFields = ["name", "deadline", "amount", "description", "requirements"]
+  for (const field of requiredFields) {
+    if (!info[field] || info[field] === "Not specified") {
+      logger.warn(`Missing or unspecified ${field} for scholarship`)
+      return false
+    }
+  }
+
+  // Additional checks can be added here, e.g., date format validation for deadline
+
+  return true
+}
+
+module.exports = { processScholarshipInfo, testMistralConnection, validateScholarshipInfo }
 

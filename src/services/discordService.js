@@ -1,5 +1,5 @@
 const { client } = require("../bot.js")
-const { processScholarshipInfo } = require("./mistralService.js")
+const { processScholarshipInfo, validateScholarshipInfo } = require("./mistralService.js")
 const { insertScholarship } = require("./supabaseService.js")
 const logger = require("../utils/logger.js")
 const config = require("../utils/config.js")
@@ -24,12 +24,23 @@ client.on("messageCreate", async (message) => {
         logger.info(`⏳ Calling Mistral API for URL: ${url}`)
 
         const scholarshipInfo = await processScholarshipInfo(url)
-        logger.info(`📄 Scholarship data to insert: ${JSON.stringify(scholarshipInfo)}`)
+        logger.info(`📄 Scholarship data extracted: ${JSON.stringify(scholarshipInfo)}`)
 
-        await insertScholarship({ ...scholarshipInfo, link: url })
-        logger.info(`✅ Successfully processed and inserted scholarship from URL: ${url}`)
+        if (validateScholarshipInfo(scholarshipInfo)) {
+          await insertScholarship({ ...scholarshipInfo, link: url })
+          logger.info(`✅ Successfully processed and inserted scholarship from URL: ${url}`)
+          message.reply("Scholarship information has been successfully added to the database.")
+        } else {
+          logger.warn(`❌ Invalid scholarship data extracted from URL: ${url}`)
+          message.reply(
+            "Unable to extract valid scholarship information from the provided link. Please check the URL and try again, or manually enter the scholarship details.",
+          )
+        }
       } catch (error) {
         logger.error(`❌ Error processing message: ${error.message}`)
+        message.reply(
+          "An error occurred while processing the scholarship information. Please try again later or contact an administrator.",
+        )
       }
     } else {
       logger.info(`ℹ️ Message does not contain a URL`)
