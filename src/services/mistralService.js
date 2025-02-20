@@ -6,6 +6,7 @@ const { scrapeWebpage } = require("./webScraper.js")
 async function processScholarshipInfo(url) {
   try {
     // First try web scraping
+    logger.info(`Attempting to scrape ${url}`)
     const scrapedInfo = await scrapeWebpage(url)
 
     if (scrapedInfo && isValidScholarshipInfo(scrapedInfo)) {
@@ -13,9 +14,16 @@ async function processScholarshipInfo(url) {
       return scrapedInfo
     }
 
-    // If scraping failed or missed critical info, try AI as backup
-    logger.info("Scraping incomplete, falling back to AI")
-    return await extractWithAI(url, scrapedInfo)
+    // If scraping failed or missed critical info, try AI
+    logger.info("Scraping incomplete, trying AI extraction")
+    const aiInfo = await extractWithAI(url, scrapedInfo)
+
+    if (isValidScholarshipInfo(aiInfo)) {
+      logger.info("Using AI-extracted information")
+      return aiInfo
+    }
+
+    throw new Error("Could not extract sufficient scholarship information")
   } catch (error) {
     logger.error(`Error processing scholarship info: ${error.message}`)
     throw error
@@ -26,12 +34,14 @@ function isValidScholarshipInfo(info) {
   if (!info) return false
 
   // Check if we have the minimum required information
-  const hasName = info.name && info.name !== "Scholarship Opportunity"
-  const hasAmount = info.amount && info.amount.includes("$")
-  const hasDeadline = info.deadline && /\d{4}/.test(info.deadline) // Contains a year
+  const hasName = info.name && info.name.length > 5
+  const hasAmount = info.amount && /\$/.test(info.amount)
+  const hasDeadline = info.deadline && /\d{4}/.test(info.deadline)
   const hasRequirements = Array.isArray(info.requirements) && info.requirements.length > 0
+  const hasDescription = info.description && info.description.length > 20
 
-  return hasName && (hasAmount || hasDeadline) && hasRequirements
+  // Must have name and at least two other pieces of information
+  return hasName && [hasAmount, hasDeadline, hasRequirements, hasDescription].filter(Boolean).length >= 2
 }
 
 async function extractWithAI(url, scrapedInfo = null) {
@@ -42,27 +52,28 @@ async function extractWithAI(url, scrapedInfo = null) {
       messages: [
         {
           role: "system",
-          content: `You are a precise scholarship information extractor. Extract ONLY information that is explicitly stated on the webpage. Do not make assumptions or add information that isn't there.
-          
-          ${scrapedInfo ? `Previously scraped information: ${JSON.stringify(scrapedInfo)}` : ""}`,
+          content: `You are a scholarship information extractor. Extract ONLY explicitly stated information from the webpage.
+          ${scrapedInfo ? `Previously scraped partial information: ${JSON.stringify(scrapedInfo)}` : ""}`,
         },
         {
           role: "user",
-          content: `Visit this scholarship page and extract ONLY the explicitly stated information: ${url}
+          content: `Visit ${url} and extract scholarship information.
           
           Required format:
           {
-            "name": "Exact scholarship name as shown",
-            "deadline": "Complete deadline date if stated",
-            "amount": "Exact amount with $ sign if stated",
-            "description": "Brief description from the page",
-            "requirements": ["List of stated requirements"]
+            "name": "Exact scholarship name",
+            "deadline": "Complete deadline date",
+            "amount": "Exact amount with $ sign",
+            "description": "Brief description",
+            "requirements": ["List of requirements"]
           }
           
-          Important:
-          - Only include information directly stated on the page
-          - Use null for missing information
-          - Do not make assumptions or add information`,
+          Rules:
+          1. Only include information directly stated on the page
+          2. Use null for missing information
+          3. Do not make assumptions
+          4. Include currency symbols
+          5. Use complete dates`,
         },
       ],
       temperature: 0.1,

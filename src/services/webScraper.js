@@ -1,160 +1,194 @@
 const axios = require("axios")
 const cheerio = require("cheerio")
+const puppeteer = require("puppeteer")
 const logger = require("../utils/logger.js")
+
+async function scrapeWithPuppeteer(url) {
+  let browser = null
+  try {
+    browser = await puppeteer.launch({
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      headless: "new",
+    })
+    const page = await browser.newPage()
+
+    // Set a reasonable timeout
+    await page.setDefaultNavigationTimeout(15000)
+
+    // Enable JavaScript
+    await page.setJavaScriptEnabled(true)
+
+    // Navigate to the page
+    await page.goto(url, { waitUntil: "networkidle0" })
+
+    // Wait for content to load
+    await page.waitForSelector("body")
+
+    // Get the page content
+    const content = await page.content()
+    return content
+  } catch (error) {
+    logger.error(`Puppeteer scraping failed: ${error.message}`)
+    return null
+  } finally {
+    if (browser) {
+      await browser.close()
+    }
+  }
+}
 
 async function scrapeWebpage(url) {
   try {
-    const response = await axios.get(url)
-    const $ = cheerio.load(response.data)
-    const pageText = $("body").text()
-
-    // Helper function to find monetary amounts
-    const findAmount = (text) => {
-      // Match any dollar amount: $X, $X.XX, $X,XXX, etc.
-      const amountRegex = /\$\s*\d{1,3}(?:,\d{3})*(?:\.\d{2})?/g
-      const amounts = text.match(amountRegex)
-      if (!amounts) return null
-
-      // If multiple amounts found, look for keywords nearby
-      const amountContexts = amounts.map((amount) => {
-        const amountIndex = text.indexOf(amount)
-        const context = text.slice(Math.max(0, amountIndex - 50), amountIndex + 50)
-        const isScholarshipAmount = /scholarship|prize|award|grant/i.test(context)
-        return { amount, isScholarshipAmount }
-      })
-
-      // Prefer amounts with scholarship context
-      const scholarshipAmount = amountContexts.find((a) => a.isScholarshipAmount)
-      return scholarshipAmount ? scholarshipAmount.amount : amounts[0]
+    // First try simple axios request
+    let content
+    try {
+      const response = await axios.get(url)
+      content = response.data
+    } catch (error) {
+      logger.info(`Axios request failed, trying Puppeteer: ${error.message}`)
+      content = await scrapeWithPuppeteer(url)
+      if (!content) {
+        throw new Error("Failed to fetch page content")
+      }
     }
 
-    // Helper function to find dates
-    const findDeadline = (text) => {
-      // Match various date formats
+    const $ = cheerio.load(content)
+
+    // Extract all text content for analysis
+    const pageText = $("body").text()
+
+    // Find monetary amounts
+    const findAmounts = (text) => {
+      const amounts = []
+      // Match various money formats
+      const moneyRegex = /\$\s*\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\d{1,3}(?:,\d{3})*(?:\.\d{2})?\s*(?:dollars|USD|CAD)/gi
+      let match
+      while ((match = moneyRegex.exec(text)) !== null) {
+        amounts.push(match[0])
+      }
+      return amounts
+    }
+
+    // Find dates
+    const findDates = (text) => {
+      const dates = []
+      // Various date formats
       const datePatterns = [
-        // Full month name: January 1, 2024 or January 1 2024
-        /(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:,|\s)\s*\d{4}/i,
-        // Abbreviated month: Jan 1, 2024 or Jan 1 2024
-        /(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:,|\s)\s*\d{4}/i,
-        // MM/DD/YYYY or MM-DD-YYYY
-        /\d{1,2}[-/]\d{1,2}[-/]\d{4}/,
-        // YYYY-MM-DD
-        /\d{4}-\d{2}-\d{2}/,
+        /(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}/gi,
+        /(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}/gi,
+        /\d{4}-\d{2}-\d{2}/g,
+        /\d{1,2}[-/]\d{1,2}[-/]\d{4}/g,
       ]
 
-      // Look for dates near deadline-related words
-      const deadlineContexts = [/deadline|due|submit|close|end|application/i]
+      datePatterns.forEach((pattern) => {
+        let match
+        while ((match = pattern.exec(text)) !== null) {
+          dates.push(match[0])
+        }
+      })
+      return dates
+    }
 
-      // First try to find dates with deadline context
-      for (const contextPattern of deadlineContexts) {
-        const contextMatch = text.match(new RegExp(`.{0,50}${contextPattern.source}.{0,50}`, "gi"))
-        if (contextMatch) {
-          for (const context of contextMatch) {
-            for (const datePattern of datePatterns) {
-              const dateMatch = context.match(datePattern)
-              if (dateMatch) return dateMatch[0]
-            }
-          }
+    // Find scholarship name
+    const findScholarshipName = ($) => {
+      // Look for elements with scholarship-related keywords
+      const selectors = [
+        'h1:contains("scholarship")',
+        'h1:contains("contest")',
+        'h2:contains("scholarship")',
+        'h2:contains("contest")',
+        ".scholarship-title",
+        "#scholarship-title",
+        "title",
+      ]
+
+      for (const selector of selectors) {
+        const element = $(selector).first()
+        if (element.length && element.text().trim()) {
+          return element.text().trim()
         }
       }
 
-      // If no deadline-specific date found, look for any date
-      for (const datePattern of datePatterns) {
-        const dateMatch = text.match(datePattern)
-        if (dateMatch) return dateMatch[0]
-      }
-
-      return null
+      // If no specific scholarship title found, use page title
+      return $("title").text().trim() || "Scholarship Opportunity"
     }
 
-    // Find the most relevant title
-    const findTitle = ($) => {
-      // Look for scholarship-related headings
-      const headings = $("h1, h2, h3")
-        .filter((_, el) => {
-          const text = $(el).text().toLowerCase()
-          return text.includes("scholarship") || text.includes("contest") || text.includes("grant")
-        })
-        .first()
-
-      if (headings.length) return headings.text().trim()
-
-      // Fallback to page title
-      const pageTitle = $("title").text().trim()
-      if (pageTitle) return pageTitle
-
-      // Fallback to first heading
-      const firstHeading = $("h1").first().text().trim()
-      return firstHeading || "Scholarship Opportunity"
-    }
-
-    // Find description
-    const findDescription = ($) => {
-      // Look for meta description first
-      const metaDescription = $('meta[name="description"]').attr("content")
-      if (metaDescription) return metaDescription
-
-      // Look for first paragraph after title that mentions scholarship
-      const relevantParagraph = $("p")
-        .filter((_, el) => {
-          const text = $(el).text().toLowerCase()
-          return text.includes("scholarship") || text.includes("contest") || text.includes("grant")
-        })
-        .first()
-
-      if (relevantParagraph.length) return relevantParagraph.text().trim()
-
-      // Fallback to first paragraph
-      return $("p").first().text().trim() || "Scholarship opportunity for students."
-    }
-
-    // Extract requirements
-    const findRequirements = ($, text) => {
+    // Find requirements
+    const findRequirements = ($) => {
       const requirements = new Set()
 
       // Look for lists
-      $("ul li, ol li").each((_, el) => {
-        const text = $(el).text().trim()
-        if (text.length > 5) requirements.add(text)
+      $("ul li, ol li").each((_, elem) => {
+        const text = $(elem).text().trim()
+        if (
+          text.length > 10 &&
+          /must|should|require|eligible|submit|between|minimum|maximum|deadline|criteria/i.test(text)
+        ) {
+          requirements.add(text)
+        }
       })
 
-      // Look for requirement-like sentences in paragraphs
-      $("p").each((_, el) => {
-        const text = $(el).text()
-        const sentences = text.split(/[.!?]+/)
-        sentences.forEach((sentence) => {
-          sentence = sentence.trim()
-          if (sentence.length > 10 && /must|should|require|eligible|minimum|criteria/i.test(sentence)) {
-            requirements.add(sentence)
-          }
-        })
+      // Look for requirement-like paragraphs
+      $("p").each((_, elem) => {
+        const text = $(elem).text().trim()
+        if (
+          text.length > 10 &&
+          /must|should|require|eligible|submit|between|minimum|maximum|deadline|criteria/i.test(text)
+        ) {
+          requirements.add(text)
+        }
       })
-
-      // Look for email submission requirements
-      const emailMatch = text.match(/[\w.-]+@[\w.-]+\.\w+/)
-      if (emailMatch) {
-        requirements.add(`Submit application to ${emailMatch[0]}`)
-      }
 
       return Array.from(requirements)
     }
 
-    const scholarshipInfo = {
-      name: findTitle($),
-      deadline: findDeadline(pageText),
-      amount: findAmount(pageText),
-      description: findDescription($),
-      requirements: findRequirements($, pageText),
+    // Find description
+    const findDescription = ($) => {
+      // Try meta description first
+      const metaDesc = $('meta[name="description"]').attr("content")
+      if (metaDesc) return metaDesc
+
+      // Look for relevant paragraphs
+      const relevantP = $("p")
+        .filter((_, el) => {
+          const text = $(el).text().toLowerCase()
+          return (
+            text.includes("scholarship") || text.includes("contest") || text.includes("award") || text.includes("prize")
+          )
+        })
+        .first()
+
+      if (relevantP.length) return relevantP.text().trim()
+
+      // Fallback to first substantial paragraph
+      return $("p")
+        .filter((_, el) => $(el).text().trim().length > 50)
+        .first()
+        .text()
+        .trim()
     }
 
-    // Clean up the data
-    Object.keys(scholarshipInfo).forEach((key) => {
-      if (typeof scholarshipInfo[key] === "string") {
-        scholarshipInfo[key] = scholarshipInfo[key].replace(/\s+/g, " ").trim() || null
-      }
-    })
+    // Extract information
+    const amounts = findAmounts(pageText)
+    const dates = findDates(pageText)
+    const name = findScholarshipName($)
+    const requirements = findRequirements($)
+    const description = findDescription($)
 
-    logger.info(`Scraped scholarship info: ${JSON.stringify(scholarshipInfo)}`)
+    // Validate extracted information
+    if (!name || (!amounts.length && !dates.length && !requirements.length)) {
+      throw new Error("Insufficient scholarship information found")
+    }
+
+    const scholarshipInfo = {
+      name: name,
+      deadline: dates.length ? dates[0] : null,
+      amount: amounts.length ? amounts[0] : null,
+      description: description || "Scholarship opportunity for students.",
+      requirements: requirements.length ? requirements : ["Please visit the website for detailed requirements."],
+    }
+
+    logger.info(`Successfully extracted scholarship info from ${url}`)
     return scholarshipInfo
   } catch (error) {
     logger.error(`Web scraping failed: ${error.message}`)
