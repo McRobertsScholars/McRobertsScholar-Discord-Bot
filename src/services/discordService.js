@@ -1,81 +1,97 @@
 const { client } = require("../bot.js")
 const { processScholarshipInfo } = require("./mistralService.js")
 const { insertScholarship } = require("./supabaseService.js")
+const { getAllPageText } = require("./webScraper.js")
 const logger = require("../utils/logger.js")
 const config = require("../utils/config.js")
 
+// Track processed messages to prevent duplicates
+const processedMessages = new Set()
+
 client.on("messageCreate", async (message) => {
-  if (message.channelId === config.CHANNEL_ID && message.content.includes("http")) {
-    let processingMsg = null
-    try {
-      const urlMatch = message.content.match(/(https?:\/\/[^\s]+)/g)
-      if (!urlMatch) {
-        await message.reply("Please provide a valid scholarship URL.")
-        return
-      }
+  // Ignore if not in target channel or is from a bot
+  if (message.channelId !== config.CHANNEL_ID || message.author.bot) return
 
-      const url = urlMatch[0]
-      processingMsg = await message.reply("🔍 Processing scholarship information... Please wait.")
+  // Extract URLs from message
+  const urlMatch = message.content.match(/(https?:\/\/[^\s]+)/g)
+  if (!urlMatch) return
 
-      const scholarshipInfo = await processScholarshipInfo(url)
+  // Check if we've already processed this message
+  if (processedMessages.has(message.id)) return
+  processedMessages.add(message.id)
 
-      // Format requirements for display
-      const requirementsList = Array.isArray(scholarshipInfo.requirements)
-        ? scholarshipInfo.requirements.map((r) => `• ${r}`).join("\n")
-        : "Not specified"
+  // Clean up old processed messages (after 5 minutes)
+  setTimeout(() => processedMessages.delete(message.id), 5 * 60 * 1000)
 
-      // Create preview message
-      const previewEmbed = {
-        color: 0x0099ff,
-        title: scholarshipInfo.name,
-        url: url,
-        description: scholarshipInfo.description,
-        fields: [
-          {
-            name: "💰 Amount",
-            value: scholarshipInfo.amount || "Not specified",
-            inline: true,
-          },
-          {
-            name: "📅 Deadline",
-            value: scholarshipInfo.deadline || "Not specified",
-            inline: true,
-          },
-          {
-            name: "📋 Requirements",
-            value: requirementsList,
-          },
-        ],
-        footer: {
-          text: "Scholarship information extracted automatically",
+  const url = urlMatch[0]
+  let processingMsg = null
+
+  try {
+    processingMsg = await message.reply("🔍 Processing scholarship information... Please wait.")
+
+    // Get the page content
+    const pageContent = await getAllPageText(url)
+    if (!pageContent) {
+      throw new Error("No content found")
+    }
+
+    // Process with AI
+    const scholarshipInfo = await processScholarshipInfo(url, pageContent)
+
+    // Create embed
+    const embed = {
+      color: 0x0099ff,
+      title: scholarshipInfo.name,
+      url: url,
+      description: scholarshipInfo.description,
+      fields: [
+        {
+          name: "💰 Amount",
+          value: scholarshipInfo.amount || "Not specified",
+          inline: true,
         },
-      }
+        {
+          name: "📅 Deadline",
+          value: scholarshipInfo.deadline || "Not specified",
+          inline: true,
+        },
+      ],
+    }
 
-      // Edit the processing message
-      await processingMsg.edit({
-        content: "Found scholarship information:",
-        embeds: [previewEmbed],
+    // Add requirements if they exist
+    if (scholarshipInfo.requirements && scholarshipInfo.requirements.length > 0) {
+      embed.fields.push({
+        name: "📋 Requirements",
+        value: Array.isArray(scholarshipInfo.requirements)
+          ? scholarshipInfo.requirements.join("\n")
+          : scholarshipInfo.requirements,
       })
+    }
 
-      await insertScholarship({ ...scholarshipInfo, link: url })
+    // Update processing message with results
+    await processingMsg.edit({
+      content: "✅ Found scholarship information:",
+      embeds: [embed],
+    })
 
-      // Send confirmation as a follow-up message
-      await message.reply("✅ Scholarship has been added to the database!")
-    } catch (error) {
-      logger.error(`Error processing message: ${error.message}`)
+    // Store in database
+    await insertScholarship({ ...scholarshipInfo, link: url })
+  } catch (error) {
+    logger.error(`Error processing URL ${url}: ${error.message}`)
 
-      const errorMessage = error.message.includes("403")
-        ? "⚠️ This website has additional security. Using backup information source..."
-        : "❌ Sorry, I couldn't process this scholarship. Please verify the URL is accessible and contains scholarship details."
-
-      if (processingMsg) {
-        await processingMsg.edit(errorMessage)
-      } else {
-        await message.reply(errorMessage)
-      }
+    if (processingMsg) {
+      await processingMsg.edit({
+        content:
+          "❌ Sorry, I couldn't process this scholarship. Please verify the URL is accessible and contains scholarship details.",
+        embeds: [], // Clear any existing embeds
+      })
     }
   }
 })
 
-module.exports = { setupDiscordService: () => {} }
+function setupDiscordService() {
+  logger.info("Discord service initialized")
+}
+
+module.exports = { setupDiscordService }
 
