@@ -3,6 +3,18 @@ const config = require("../utils/config.js")
 const logger = require("../utils/logger.js")
 const { getAllPageText } = require("./webScraper.js")
 
+function truncateText(text, maxLength = 1000) {
+  if (text.length <= maxLength) return text
+  return text.substr(0, maxLength - 3) + "..."
+}
+
+function formatRequirements(requirements) {
+  if (Array.isArray(requirements)) {
+    return requirements.join("\n• ")
+  }
+  return requirements
+}
+
 async function processScholarshipInfo(url) {
   try {
     const pageText = await getAllPageText(url)
@@ -16,6 +28,10 @@ async function processScholarshipInfo(url) {
     if (!isValidScholarshipInfo(scholarshipInfo)) {
       throw new Error("Could not extract valid scholarship information")
     }
+
+    // Format and truncate the scholarship information
+    scholarshipInfo.description = truncateText(scholarshipInfo.description, 1000)
+    scholarshipInfo.requirements = truncateText(formatRequirements(scholarshipInfo.requirements), 1000)
 
     return scholarshipInfo
   } catch (error) {
@@ -31,7 +47,7 @@ function isValidScholarshipInfo(info) {
   const hasName = info.name && info.name.length > 5
   const hasAmount = info.amount && (info.amount.includes("$") || info.amount === "Not specified")
   const hasDeadline = info.deadline && (info.deadline.length > 5 || info.deadline === "Not specified")
-  const hasRequirements = Array.isArray(info.requirements) && info.requirements.length > 0
+  const hasRequirements = info.requirements && info.requirements.length > 0
   const hasDescription = info.description && info.description.length > 20
 
   return hasName && [hasAmount, hasDeadline, hasRequirements, hasDescription].filter(Boolean).length >= 2
@@ -52,7 +68,7 @@ Rules:
 2. Use 'Not specified' for missing information
 3. Include ALL prize amounts if multiple exist
 4. Include the FULL deadline date if stated
-5. List ALL stated requirements
+5. List ALL stated requirements as a bullet-point list
 6. Do not make assumptions or add information not in the text`
 
   const response = await axios.post(
@@ -76,7 +92,7 @@ Extract the scholarship information and format it as JSON with these fields:
   "deadline": "Exact deadline date if stated, or 'Not specified'",
   "amount": "Exact prize/award amount with $ sign, or 'Not specified'",
   "description": "Brief description of the scholarship/contest",
-  "requirements": ["List of specific requirements"]
+  "requirements": "• Requirement 1\n• Requirement 2\n• ..."
 }`,
         },
       ],
