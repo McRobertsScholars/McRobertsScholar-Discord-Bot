@@ -3,7 +3,8 @@ const logger = require("./utils/logger.js")
 const express = require("express")
 const axios = require("axios")
 const { setupDiscordService } = require("./services/discordService.js")
-const { setupMistralService } = require("./services/mistralService.js")
+const { setupDatabase } = require("./utils/setupDatabase.js")
+const { removeExpiredScholarships } = require("./services/linkService.js")
 const { testSupabaseConnection } = require("./services/supabaseService.js")
 
 // Express server setup
@@ -21,8 +22,22 @@ app.listen(PORT, () => {
   // Then start the bot and services
   startBot()
   setupDiscordService()
-  setupMistralService() // Using setupMistralService instead of testMistralConnection
+  setupDatabase()
   testSupabaseConnection()
+
+  // Schedule daily cleanup of expired scholarships
+  setInterval(
+    async () => {
+      logger.info("Running scheduled cleanup of expired scholarships")
+      const result = await removeExpiredScholarships()
+      if (result.success) {
+        logger.info(result.message)
+      } else {
+        logger.error(`Scheduled cleanup failed: ${result.message}`)
+      }
+    },
+    24 * 60 * 60 * 1000,
+  ) // Run once every 24 hours
 })
 
 // Keep-alive ping every 14 minutes

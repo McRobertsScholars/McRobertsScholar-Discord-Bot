@@ -1,7 +1,5 @@
 const { client } = require("../bot.js")
-const { processScholarshipInfo } = require("./mistralService.js")
-const { insertScholarship } = require("./supabaseService.js")
-const { getAllPageText } = require("./webScraper.js")
+const { storeLink } = require("./linkService.js")
 const logger = require("../utils/logger.js")
 const config = require("../utils/config.js")
 
@@ -24,66 +22,25 @@ client.on("messageCreate", async (message) => {
   setTimeout(() => processedMessages.delete(message.id), 5 * 60 * 1000)
 
   const url = urlMatch[0]
-  let processingMsg = null
+  let responseMsg = null
 
   try {
-    processingMsg = await message.reply("🔍 Processing scholarship information... Please wait.")
+    responseMsg = await message.reply("🔗 Storing scholarship link... Please wait.")
 
-    // Get the page content
-    const pageContent = await getAllPageText(url)
-    if (!pageContent) {
-      throw new Error("No content found")
+    // Store the link in the database
+    const result = await storeLink(url, message.id, message.author.id)
+
+    if (result.success) {
+      await responseMsg.edit("✅ Scholarship link stored successfully! An executive will process it later.")
+    } else {
+      await responseMsg.edit(`⚠️ ${result.message}`)
     }
-
-    // Process with AI
-    const scholarshipInfo = await processScholarshipInfo(url, pageContent)
-
-    // Create embed
-    const embed = {
-      color: 0x0099ff,
-      title: scholarshipInfo.name,
-      url: url,
-      description: scholarshipInfo.description,
-      fields: [
-        {
-          name: "💰 Amount",
-          value: scholarshipInfo.amount || "Not specified",
-          inline: true,
-        },
-        {
-          name: "📅 Deadline",
-          value: scholarshipInfo.deadline || "Not specified",
-          inline: true,
-        },
-      ],
-    }
-
-    // Add requirements if they exist
-    if (scholarshipInfo.requirements && scholarshipInfo.requirements.length > 0) {
-      embed.fields.push({
-        name: "📋 Requirements",
-        value: Array.isArray(scholarshipInfo.requirements)
-          ? scholarshipInfo.requirements.join("\n")
-          : scholarshipInfo.requirements,
-      })
-    }
-
-    // Update processing message with results
-    await processingMsg.edit({
-      content: "✅ Found scholarship information:",
-      embeds: [embed],
-    })
-
-    // Store in database
-    await insertScholarship({ ...scholarshipInfo, link: url })
   } catch (error) {
-    logger.error(`Error processing URL ${url}: ${error.message}`)
+    logger.error(`Error storing URL ${url}: ${error.message}`)
 
-    if (processingMsg) {
-      await processingMsg.edit({
-        content:
-          "❌ Sorry, I couldn't process this scholarship. Please verify the URL is accessible and contains scholarship details.",
-        embeds: [], // Clear any existing embeds
+    if (responseMsg) {
+      await responseMsg.edit({
+        content: "❌ Sorry, I couldn't store this link. Please try again later.",
       })
     }
   }
