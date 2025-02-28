@@ -7,7 +7,12 @@ const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY)
 async function storeLink(link, messageId, userId) {
   try {
     // Check if link already exists
-    const { data: existingLinks } = await supabase.from("links").select("*").eq("url", link).limit(1)
+    const { data: existingLinks, error: checkError } = await supabase.from("links").select("*").eq("url", link).limit(1)
+
+    if (checkError) {
+      logger.error(`Error checking existing links: ${checkError.message}`)
+      return { success: false, message: "Error checking existing links" }
+    }
 
     if (existingLinks && existingLinks.length > 0) {
       logger.info(`Link already exists: ${link}`)
@@ -15,7 +20,7 @@ async function storeLink(link, messageId, userId) {
     }
 
     // Insert the new link
-    const { data, error } = await supabase.from("links").insert([
+    const { data, error: insertError } = await supabase.from("links").insert([
       {
         url: link,
         message_id: messageId,
@@ -25,7 +30,11 @@ async function storeLink(link, messageId, userId) {
       },
     ])
 
-    if (error) throw error
+    if (insertError) {
+      logger.error(`Error inserting link: ${insertError.message}`)
+      return { success: false, message: "Error inserting link" }
+    }
+
     logger.info(`Stored link: ${link}`)
     return { success: true, data }
   } catch (error) {

@@ -6,32 +6,22 @@ async function setupDatabase() {
   try {
     const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY)
 
-    // Check if the links table exists
-    const { data: existingTables, error: tableError } = await supabase
-      .from("information_schema.tables")
-      .select("table_name")
-      .eq("table_schema", "public")
+    // Create links table
+    const { error: createError } = await supabase.rpc("create_links_table")
 
-    if (tableError) {
-      logger.error(`Error checking tables: ${tableError.message}`)
-      return
+    if (createError) {
+      logger.error(`Error creating links table: ${createError.message}`)
+    } else {
+      logger.info("Links table created or already exists")
     }
 
-    const tables = existingTables.map((t) => t.table_name)
+    // Verify the table exists
+    const { data, error: selectError } = await supabase.from("links").select("id").limit(1)
 
-    // Create links table if it doesn't exist
-    if (!tables.includes("links")) {
-      logger.info("Creating links table...")
-
-      const { error: createError } = await supabase.rpc("create_links_table")
-
-      if (createError) {
-        logger.error(`Error creating links table: ${createError.message}`)
-      } else {
-        logger.info("Links table created successfully")
-      }
+    if (selectError) {
+      logger.error(`Error verifying links table: ${selectError.message}`)
     } else {
-      logger.info("Links table already exists")
+      logger.info("Links table verified successfully")
     }
 
     logger.info("Database setup completed")
