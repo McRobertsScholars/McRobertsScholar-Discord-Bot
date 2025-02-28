@@ -6,33 +6,29 @@ const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY)
 // Store a new link in the database
 async function storeLink(link, messageId, userId) {
   try {
-    // Check if link already exists
-    const { data: existingLinks, error: checkError } = await supabase.from("links").select("*").eq("url", link).limit(1)
-
-    if (checkError) {
-      logger.error(`Error checking existing links: ${checkError.message}`)
-      return { success: false, message: "Error checking existing links" }
-    }
-
-    if (existingLinks && existingLinks.length > 0) {
-      logger.info(`Link already exists: ${link}`)
-      return { success: false, message: "Link already exists in database" }
-    }
-
     // Insert the new link
-    const { data, error: insertError } = await supabase.from("links").insert([
-      {
-        url: link,
-        message_id: messageId,
-        user_id: userId,
-        created_at: new Date().toISOString(),
-        processed: false,
-      },
-    ])
+    const { data, error: insertError } = await supabase
+      .from("links")
+      .insert([
+        {
+          url: link,
+          message_id: messageId,
+          user_id: userId,
+          created_at: new Date().toISOString(),
+          processed: false,
+        },
+      ])
+      .select()
 
     if (insertError) {
-      logger.error(`Error inserting link: ${insertError.message}`)
-      return { success: false, message: "Error inserting link" }
+      // Check if the error is due to a unique constraint violation
+      if (insertError.code === "23505") {
+        logger.info(`Link already exists: ${link}`)
+        return { success: false, message: "Link already exists in database" }
+      } else {
+        logger.error(`Error inserting link: ${insertError.message}`)
+        return { success: false, message: "Error inserting link" }
+      }
     }
 
     logger.info(`Stored link: ${link}`)

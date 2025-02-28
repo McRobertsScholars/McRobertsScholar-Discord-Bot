@@ -25,22 +25,24 @@ client.on("messageCreate", async (message) => {
   let responseMsg = null
 
   try {
-    responseMsg = await message.reply("🔗 Storing scholarship link... Please wait.")
+    responseMsg = await message.reply("🔗 Processing scholarship link... Please wait.")
 
     // Store the link in the database
     const result = await storeLink(url, message.id, message.author.id)
 
     if (result.success) {
       await responseMsg.edit("✅ Scholarship link stored successfully! An executive will process it later.")
+    } else if (result.message === "Link already exists in database") {
+      await responseMsg.edit("ℹ️ This scholarship link is already in our database. Thank you for sharing!")
     } else {
       await responseMsg.edit(`⚠️ ${result.message}`)
     }
   } catch (error) {
-    logger.error(`Error storing URL ${url}: ${error.message}`)
+    logger.error(`Error processing URL ${url}: ${error.message}`)
 
     if (responseMsg) {
       await responseMsg.edit({
-        content: "❌ Sorry, I couldn't store this link. Please try again later.",
+        content: "❌ Sorry, I couldn't process this link. Please try again later.",
       })
     }
   }
