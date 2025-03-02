@@ -3,28 +3,18 @@ const config = require("../utils/config.js")
 const logger = require("../utils/logger.js")
 const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY)
 
-async function insertScholarship(scholarship) {
+async function insertScholarship(newScholarship) {
   try {
-    const { data, error } = await supabase.from("scholarships").insert([
-      {
-        name: scholarship.name || "No Title",
-        deadline: scholarship.deadline || null,
-        amount: scholarship.amount || "Not specified",
-        description: scholarship.description || "No description",
-        requirements: scholarship.requirements || "Not specified",
-        link: scholarship.link,
-      },
-    ])
-
-    if (error) throw error
-    logger.info(`Inserted scholarship: ${scholarship.name}`)
-    return data
+    const { data, error } = await supabase.from("scholarships").insert([newScholarship])
+    if (error) {
+      throw new Error("Error inserting scholarship: " + error.message)
+    }
+    return { success: true, data }
   } catch (error) {
     logger.error(`Error inserting scholarship: ${error.message}`)
-    throw error
+    return { success: false, message: error.message }
   }
 }
-
 
 async function searchScholarships(name, amount) {
   try {
@@ -56,7 +46,6 @@ async function searchScholarships(name, amount) {
   }
 }
 
-
 async function getAllScholarships() {
   const { data, error } = await supabase.from("scholarships").select("*")
   if (error) {
@@ -77,5 +66,10 @@ async function testSupabaseConnection() {
   }
 }
 
-module.exports = { insertScholarship, getAllScholarships, testSupabaseConnection }
+module.exports = {
+  insertScholarship,
+  getAllScholarships,
+  testSupabaseConnection,
+  searchScholarships,
+}
 
