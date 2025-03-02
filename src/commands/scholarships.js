@@ -1,19 +1,36 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js")
 const logger = require("../utils/logger")
-const { getAllScholarships } = require("../services/supabaseService")
+const { searchScholarships } = require("../services/supabaseService")
 
 module.exports = {
-  data: new SlashCommandBuilder().setName("scholarships").setDescription("Displays available scholarships"),
+  data: new SlashCommandBuilder()
+    .setName("scholarships")
+    .setDescription("Search or browse available scholarships")
+    .addStringOption((option) =>
+      option.setName("name").setDescription("Search scholarships by name").setRequired(false),
+    )
+    .addStringOption((option) =>
+      option
+        .setName("amount")
+        .setDescription("Search scholarships by minimum amount (e.g., 1000 for $1000+)")
+        .setRequired(false),
+    ),
 
   async execute(interaction) {
     try {
-      // Always defer the reply first
       await interaction.deferReply({ ephemeral: true })
 
-      const scholarships = await getAllScholarships()
+      const searchName = interaction.options.getString("name")
+      const searchAmount = interaction.options.getString("amount")
+
+      const { success, data: scholarships, message } = await searchScholarships(searchName, searchAmount)
+
+      if (!success) {
+        return await interaction.editReply({ content: `Error fetching scholarships: ${message}` })
+      }
 
       if (!scholarships || scholarships.length === 0) {
-        return await interaction.editReply({ content: "No scholarships found." })
+        return await interaction.editReply({ content: "No scholarships found matching your criteria." })
       }
 
       let currentIndex = 0
@@ -55,15 +72,15 @@ module.exports = {
       const initialEmbed = createEmbed(scholarships[currentIndex])
       const initialButtons = createButtons()
 
-      const message = await interaction.editReply({
+      const response = await interaction.editReply({
+        content: `Found ${scholarships.length} scholarship(s)${searchName ? ` matching "${searchName}"` : ""}${searchAmount ? ` with minimum amount $${searchAmount}` : ""}:`,
         embeds: [initialEmbed],
         components: [initialButtons],
       })
 
-      const collector = message.createMessageComponentCollector({ time: 60000 })
+      const collector = response.createMessageComponentCollector({ time: 60000 })
 
       collector.on("collect", async (i) => {
-        // Verify that the button click came from the command user
         if (i.user.id !== interaction.user.id) {
           await i.reply({ content: "This button is not for you!", ephemeral: true })
           return
@@ -85,7 +102,6 @@ module.exports = {
       })
 
       collector.on("end", () => {
-        // Use try-catch to handle potential errors when removing buttons
         try {
           interaction.editReply({ components: [] }).catch((err) => logger.warn("Could not clear buttons:", err))
         } catch (error) {
@@ -95,7 +111,6 @@ module.exports = {
     } catch (error) {
       logger.error(`Error executing scholarships command: ${error.message}`)
 
-      // Only edit reply if we've already deferred
       if (interaction.deferred) {
         await interaction.editReply({ content: "There was an error retrieving scholarships." })
       }
