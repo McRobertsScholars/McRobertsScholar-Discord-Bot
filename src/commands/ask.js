@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require("discord.js")
-const { askGroq } = require("../ai") // Updated from askMistral
+const { askGroq } = require("../ai")
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -13,47 +13,54 @@ module.exports = {
     const query = interaction.options.getString("query")
 
     try {
-      if (!interaction.deferred && !interaction.replied) {
-        await interaction.deferReply()
-      }
+      // Immediately acknowledge the interaction
+      await interaction.reply({
+        content: "🤖 Processing your question... I'll send the response to your DMs!",
+        ephemeral: true,
+      })
 
-      // Get the response from the Groq AI (updated from Mistral)
+      // Get the response from the Groq AI
       const response = await askGroq(query)
 
-      // Split long responses for Discord's character limit
-      if (response.length > 2000) {
-        // Send to DMs for long responses
-        const user = interaction.user
-        const chunks = response.match(/.{1,1900}/g) || [response]
+      // Send response to user's DMs
+      const user = interaction.user
 
-        for (const chunk of chunks) {
-          await user.send(chunk)
+      try {
+        // Split long responses for Discord's character limit
+        if (response.length > 2000) {
+          const chunks = response.match(/.{1,1900}/g) || [response]
+          for (const chunk of chunks) {
+            await user.send(chunk)
+          }
+        } else {
+          await user.send(response)
         }
 
-        if (interaction.deferred) {
-          await interaction.editReply("Response was too long, so I've sent it to your DMs!")
+        // Update the original reply to confirm DM was sent
+        await interaction.editReply("✅ Response sent to your DMs!")
+      } catch (dmError) {
+        console.error("Failed to send DM:", dmError)
+        // If DM fails, edit the reply with the response
+        if (response.length > 2000) {
+          await interaction.editReply("❌ Couldn't send DM. Response too long - please enable DMs from server members.")
         } else {
-          await interaction.reply("Response was too long, so I've sent it to your DMs!")
-        }
-      } else {
-        // Send normal response
-        if (interaction.deferred) {
-          await interaction.editReply(response)
-        } else {
-          await interaction.reply(response)
+          await interaction.editReply(`❌ Couldn't send DM. Here's your response:\n\n${response}`)
         }
       }
     } catch (error) {
       console.error("Error executing ask command:", error)
 
-      const errorMessage = "There was an error processing your request. Please try again later."
-
-      if (interaction.deferred) {
-        await interaction.editReply(errorMessage)
-      } else if (!interaction.replied) {
-        await interaction.reply({ content: errorMessage, ephemeral: true })
-      } else {
-        await interaction.followUp({ content: errorMessage, ephemeral: true })
+      try {
+        if (interaction.replied || interaction.deferred) {
+          await interaction.editReply("❌ There was an error processing your request. Please try again later.")
+        } else {
+          await interaction.reply({
+            content: "❌ There was an error processing your request. Please try again later.",
+            ephemeral: true,
+          })
+        }
+      } catch (replyError) {
+        console.error("Failed to send error message:", replyError)
       }
     }
   },

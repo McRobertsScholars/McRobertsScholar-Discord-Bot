@@ -125,7 +125,7 @@ async function askGroq(query) {
       ? resources.map((r) => `${r.title || r.name} (${r.type || "Resource"}): ${r.link}`).join("\n\n")
       : ""
 
-    // Create comprehensive context
+    // Create comprehensive context with updated meeting info
     const contextInfo = `
 KNOWLEDGE BASE:
 ${relevantKnowledge || githubKnowledge}
@@ -138,7 +138,7 @@ ${formattedResources}
 
 CLUB INFO:
 - Email: mcrobertsscholars@gmail.com
-- Meetings: Wednesdays 3:00-4:30 PM, Student Center Room 204
+- Meetings: Wednesdays at lunch in room 20119 or 20125
 - Discord: https://discord.gg/j8SP6zxraN
 `
 
@@ -147,7 +147,7 @@ CLUB INFO:
       {
         role: "system",
         content:
-          "You are an AI assistant for McRoberts Scholars, a student club that helps peers find scholarships. Use the provided context to answer questions accurately and helpfully. Keep responses concise for Discord.",
+          "You are an AI assistant for McRoberts Scholars, a student club that helps peers find scholarships. Use the provided context to answer questions accurately and helpfully. Keep responses friendly and conversational for Discord DMs.",
       },
       {
         role: "user",
@@ -166,7 +166,7 @@ CLUB INFO:
           model: "llama3-70b-8192",
           messages: messages,
           temperature: 0.7,
-          max_tokens: 1000, // Reduced to avoid issues
+          max_tokens: 1000,
           top_p: 0.9,
           stream: false,
         },
@@ -175,7 +175,7 @@ CLUB INFO:
             Authorization: `Bearer ${GROQ_API_KEY}`,
             "Content-Type": "application/json",
           },
-          timeout: 30000, // 30 second timeout
+          timeout: 30000,
         },
       )
 
@@ -200,7 +200,7 @@ CLUB INFO:
         GROQ_API_URL,
         {
           model: "llama3-8b-8192",
-          messages: messages, // Use the same messages with context
+          messages: messages,
           temperature: 0.7,
           max_tokens: 800,
         },
@@ -226,9 +226,37 @@ CLUB INFO:
   }
 }
 
-// Set up AI interaction logic for incoming messages
+// Set up AI interaction logic for incoming messages and DMs
 async function setupAI(client) {
   client.on("messageCreate", async (message) => {
+    // Handle DMs to the bot
+    if (message.channel.type === 1 && !message.author.bot) {
+      // DM channel type is 1
+      console.log(`Received DM from ${message.author.tag}: ${message.content}`)
+
+      try {
+        // Show typing indicator
+        await message.channel.sendTyping()
+
+        const answer = await askGroq(message.content)
+
+        // Split long messages if needed
+        if (answer.length > 2000) {
+          const chunks = answer.match(/.{1,1900}/g) || [answer]
+          for (const chunk of chunks) {
+            await message.reply(chunk)
+          }
+        } else {
+          await message.reply(answer)
+        }
+      } catch (error) {
+        console.error("Error in DM AI response:", error)
+        await message.reply("Sorry, I couldn't process your message right now. Please try again later.")
+      }
+      return
+    }
+
+    // Handle messages in the specific channel (existing functionality)
     if (message.channel.id === "1339802012232974377" && !message.author.bot) {
       const question = message.content
 
@@ -254,11 +282,11 @@ async function setupAI(client) {
   })
 }
 
-// Export functions (updated function names)
+// Export functions
 module.exports = {
   getScholarships,
   getResources,
-  askGroq, // Updated from askMistral
+  askGroq,
   setupAI,
-  searchKnowledgeBase, // New export
+  searchKnowledgeBase,
 }
