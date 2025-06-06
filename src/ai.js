@@ -155,7 +155,7 @@ CLUB INFO:
       },
     ]
 
-    console.log("Calling Groq API with model: llama-3.1-70b-versatile")
+    console.log("Calling Groq API with model: llama3-70b-8192")
     console.log("Message length:", JSON.stringify(messages).length)
 
     // Call Groq API with proper error handling
@@ -163,7 +163,7 @@ CLUB INFO:
       const response = await axios.post(
         GROQ_API_URL,
         {
-          model: "llama-3.1-70b-versatile",
+          model: "llama3-70b-8192",
           messages: messages,
           temperature: 0.7,
           max_tokens: 1000, // Reduced to avoid issues
