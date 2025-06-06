@@ -1,40 +1,60 @@
-const { SlashCommandBuilder } = require('discord.js');
-const { askMistral } = require('../ai');
+const { SlashCommandBuilder } = require("discord.js")
+const { askGroq } = require("../ai") // Updated from askMistral
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('ask')
-    .setDescription('Ask the AI for information about scholarships, resources, or other topics.')
-    .addStringOption(option =>
-      option.setName('query')
-        .setDescription('Enter your question or query')
-        .setRequired(true)),
+    .setName("ask")
+    .setDescription("Ask the AI for information about scholarships, resources, or other topics.")
+    .addStringOption((option) =>
+      option.setName("query").setDescription("Enter your question or query").setRequired(true),
+    ),
 
   async execute(interaction) {
-    const query = interaction.options.getString('query');
+    const query = interaction.options.getString("query")
 
     try {
-      // If the interaction hasn't been deferred or replied to yet, defer the reply
       if (!interaction.deferred && !interaction.replied) {
-        await interaction.deferReply();
+        await interaction.deferReply()
       }
 
-      // Get the response from the Mistral AI
-      const response = await askMistral(query);
+      // Get the response from the Groq AI (updated from Mistral)
+      const response = await askGroq(query)
 
-      // Send the response to the user's DM
-      const user = interaction.user;
-      await user.send(response);
+      // Split long responses for Discord's character limit
+      if (response.length > 2000) {
+        // Send to DMs for long responses
+        const user = interaction.user
+        const chunks = response.match(/.{1,1900}/g) || [response]
 
-      // Inform the user that the AI response was sent to their DMs
-      if (interaction.deferred) {
-        await interaction.editReply('I\'ve sent the response to your DMs!');
+        for (const chunk of chunks) {
+          await user.send(chunk)
+        }
+
+        if (interaction.deferred) {
+          await interaction.editReply("Response was too long, so I've sent it to your DMs!")
+        } else {
+          await interaction.reply("Response was too long, so I've sent it to your DMs!")
+        }
       } else {
-        await interaction.reply('I\'ve sent the response to your DMs!');
+        // Send normal response
+        if (interaction.deferred) {
+          await interaction.editReply(response)
+        } else {
+          await interaction.reply(response)
+        }
       }
     } catch (error) {
-      console.error('Error executing ask command:', error);
-      await interaction.followUp({ content: 'There was an error processing your request.', ephemeral: true });
+      console.error("Error executing ask command:", error)
+
+      const errorMessage = "There was an error processing your request. Please try again later."
+
+      if (interaction.deferred) {
+        await interaction.editReply(errorMessage)
+      } else if (!interaction.replied) {
+        await interaction.reply({ content: errorMessage, ephemeral: true })
+      } else {
+        await interaction.followUp({ content: errorMessage, ephemeral: true })
+      }
     }
-  }
-};
+  },
+}
