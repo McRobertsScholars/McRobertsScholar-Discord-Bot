@@ -100,6 +100,10 @@ async function askGroq(query) {
 
     // Search knowledge base for relevant information
     const relevantKnowledge = await searchKnowledgeBase(query)
+    console.log("Knowledge chunks found:", relevantKnowledge ? "Yes" : "No")
+    if (relevantKnowledge) {
+      console.log("Knowledge content preview:", relevantKnowledge.substring(0, 200) + "...")
+    }
 
     // Fallback to GitHub knowledge if no database results
     const githubKnowledge = relevantKnowledge ? "" : await getKnowledgeFromGitHub()
@@ -121,93 +125,104 @@ async function askGroq(query) {
       ? resources.map((r) => `${r.title || r.name} (${r.type || "Resource"}): ${r.link}`).join("\n\n")
       : ""
 
-    // Create system message with all context
-    const systemMessage = `You are an AI assistant for McRoberts Scholars, a student club that helps peers find and apply for scholarships.
-
-KNOWLEDGE BASE INFORMATION:
+    // Create comprehensive context
+    const contextInfo = `
+KNOWLEDGE BASE:
 ${relevantKnowledge || githubKnowledge}
 
-AVAILABLE SCHOLARSHIPS:
+SCHOLARSHIPS:
 ${formattedScholarships}
 
-AVAILABLE RESOURCES:
+RESOURCES:
 ${formattedResources}
 
-CLUB INFORMATION:
-- Weekly meetings: Wednesdays 3:00-4:30 PM in Student Center Room 204
-- Discord: https://discord.gg/j8SP6zxraN
+CLUB INFO:
 - Email: mcrobertsscholars@gmail.com
+- Meetings: Wednesdays 3:00-4:30 PM, Student Center Room 204
+- Discord: https://discord.gg/j8SP6zxraN
+`
 
-Always provide helpful, accurate responses based on the information above. Keep responses concise for Discord. Include relevant links when appropriate.
-
-User Query: ${query}`
-
-    // Prepare messages for Groq
+    // Prepare messages for Groq with proper structure
     const messages = [
-      { role: "system", content: systemMessage },
-      { role: "user", content: query },
+      {
+        role: "system",
+        content:
+          "You are an AI assistant for McRoberts Scholars, a student club that helps peers find scholarships. Use the provided context to answer questions accurately and helpfully. Keep responses concise for Discord.",
+      },
+      {
+        role: "user",
+        content: `Context: ${contextInfo}\n\nQuestion: ${query}`,
+      },
     ]
 
     console.log("Calling Groq API with model: llama-3.1-70b-versatile")
+    console.log("Message length:", JSON.stringify(messages).length)
 
-    // Call Groq API
-    const response = await axios.post(
-      GROQ_API_URL,
-      {
-        model: "llama-3.1-70b-versatile",
-        messages: messages,
-        temperature: 0.7,
-        max_tokens: 1500,
-        top_p: 0.9,
-        stream: false,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${GROQ_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-      },
-    )
-
-    if (response.data.choices && response.data.choices[0] && response.data.choices[0].message) {
-      return response.data.choices[0].message.content
-    } else {
-      throw new Error("Invalid Groq response structure")
-    }
-  } catch (error) {
-    console.error("Error with primary Groq model:", error.message)
-
-    // Try fallback model
+    // Call Groq API with proper error handling
     try {
-      console.log("Trying fallback model: llama3-8b-8192")
-
-      const fallbackResponse = await axios.post(
+      const response = await axios.post(
         GROQ_API_URL,
         {
-          model: "llama3-8b-8192",
-          messages: [
-            { role: "system", content: "You are a helpful assistant for McRoberts Scholars scholarship club." },
-            { role: "user", content: query },
-          ],
+          model: "llama-3.1-70b-versatile",
+          messages: messages,
           temperature: 0.7,
-          max_tokens: 1000,
+          max_tokens: 1000, // Reduced to avoid issues
+          top_p: 0.9,
+          stream: false,
         },
         {
           headers: {
             Authorization: `Bearer ${GROQ_API_KEY}`,
             "Content-Type": "application/json",
           },
+          timeout: 30000, // 30 second timeout
+        },
+      )
+
+      if (response.data.choices && response.data.choices[0] && response.data.choices[0].message) {
+        console.log("Primary model response received successfully")
+        return response.data.choices[0].message.content
+      } else {
+        throw new Error("Invalid response structure from primary model")
+      }
+    } catch (primaryError) {
+      console.error("Primary model error details:", {
+        status: primaryError.response?.status,
+        statusText: primaryError.response?.statusText,
+        data: primaryError.response?.data,
+        message: primaryError.message,
+      })
+
+      // Try fallback model with the SAME context
+      console.log("Trying fallback model: llama3-8b-8192")
+
+      const fallbackResponse = await axios.post(
+        GROQ_API_URL,
+        {
+          model: "llama3-8b-8192",
+          messages: messages, // Use the same messages with context
+          temperature: 0.7,
+          max_tokens: 800,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${GROQ_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          timeout: 30000,
         },
       )
 
       if (fallbackResponse.data.choices && fallbackResponse.data.choices[0]) {
+        console.log("Fallback model response received successfully")
         return fallbackResponse.data.choices[0].message.content
+      } else {
+        throw new Error("Both models failed to provide valid responses")
       }
-    } catch (fallbackError) {
-      console.error("Fallback model also failed:", fallbackError.message)
     }
-
-    return "Sorry, I'm having trouble connecting to the AI service right now. Please try again later."
+  } catch (error) {
+    console.error("Complete AI service failure:", error.message)
+    return "Sorry, I'm having trouble connecting to the AI service right now. For immediate help, you can email us at mcrobertsscholars@gmail.com or join our Discord at https://discord.gg/j8SP6zxraN"
   }
 }
 
