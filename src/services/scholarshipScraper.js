@@ -1,7 +1,7 @@
 const axios = require("axios")
 const cheerio = require("cheerio")
 const logger = require("../utils/logger.js")
-const { processScholarshipData } = require("./linkService.js")
+const { storeLink } = require("./linkService.js")
 
 const SCHOLARSHIP_SOURCES = [
   {
@@ -50,14 +50,13 @@ async function parseRSSFeed(url, sourceName) {
     })
 
     const $ = cheerio.load(response.data, { xmlMode: true })
-    const scholarships = []
+    const scholarshipLinks = []
 
     $("item").each((index, element) => {
       try {
         const title = $(element).find("title").text().trim()
         const link = $(element).find("link").text().trim()
         const description = $(element).find("description").text().trim()
-        const pubDate = $(element).find("pubDate").text().trim()
 
         // Only include if it looks like a scholarship (contains scholarship keywords)
         const scholarshipKeywords = ["scholarship", "grant", "award", "financial aid", "funding"]
@@ -66,23 +65,14 @@ async function parseRSSFeed(url, sourceName) {
         )
 
         if (title && link && containsKeyword) {
-          scholarships.push({
-            name: title.substring(0, 200),
-            deadline: "Check website for deadline",
-            amount: "Varies",
-            description: description
-              ? description.replace(/<[^>]*>/g, "").substring(0, 500)
-              : "Check website for details",
-            requirements: "Visit website for full requirements",
-            link: link,
-          })
+          scholarshipLinks.push(link)
         }
       } catch (error) {
         logger.warn(`Error parsing RSS item: ${error.message}`)
       }
     })
 
-    return scholarships.slice(0, 10) // Limit to 10 per source
+    return scholarshipLinks.slice(0, 10) // Limit to 10 per source
   } catch (error) {
     logger.error(`Error parsing RSS feed ${sourceName}: ${error.message}`)
     return []
@@ -91,11 +81,11 @@ async function parseRSSFeed(url, sourceName) {
 
 async function scrapeScholarshipsFromSite(source) {
   try {
-    logger.info(`Scraping scholarships from ${source.name}...`)
+    logger.info(`Scraping scholarship links from ${source.name}...`)
 
     if (source.type === "rss") {
-      const scholarships = await parseRSSFeed(source.url, source.name)
-      return { success: true, scholarships, source: source.name }
+      const scholarshipLinks = await parseRSSFeed(source.url, source.name)
+      return { success: true, links: scholarshipLinks, source: source.name }
     }
 
     const response = await axios.get(source.url, {
@@ -113,7 +103,7 @@ async function scrapeScholarshipsFromSite(source) {
       },
       timeout: 20000,
       maxRedirects: 3,
-      validateStatus: (status) => status < 500, // Accept 4xx errors but not 5xx
+      validateStatus: (status) => status < 500,
     })
 
     if (response.status >= 400) {
@@ -122,7 +112,7 @@ async function scrapeScholarshipsFromSite(source) {
     }
 
     const $ = cheerio.load(response.data)
-    const scholarships = []
+    const scholarshipLinks = []
 
     let elements = $(source.selector)
 
@@ -154,17 +144,13 @@ async function scrapeScholarshipsFromSite(source) {
       try {
         const $el = $(element)
 
-        // More flexible name extraction
+        // Extract scholarship name for keyword filtering
         const name =
           $el.find("h1, h2, h3, h4, .title, .name, .heading").first().text().trim() ||
           $el.find("a").first().text().trim() ||
           $el.text().split("\n")[0].trim()
 
-        const deadline = $el.find(".deadline, .date, .expires, .due, [class*='date']").first().text().trim()
-        const amount = $el.find(".amount, .value, .award, .prize, [class*='amount']").first().text().trim()
-        const description = $el.find(".description, .summary, .excerpt, p").first().text().trim()
-
-        // More flexible link extraction
+        // Extract link
         let link = $el.find("a").first().attr("href") || $el.attr("href")
         if (link && !link.startsWith("http")) {
           const baseUrl = new URL(source.url).origin
@@ -174,43 +160,34 @@ async function scrapeScholarshipsFromSite(source) {
         const scholarshipKeywords = ["scholarship", "grant", "award", "financial", "funding", "college", "student"]
         const containsKeyword = scholarshipKeywords.some((keyword) => name.toLowerCase().includes(keyword))
 
-        if (name && name.length > 10 && name.length < 200 && (link || containsKeyword)) {
-          scholarships.push({
-            name: name.substring(0, 200),
-            deadline: deadline || "Check website for deadline",
-            amount: amount || "Varies",
-            description: description ? description.substring(0, 500) : "Check website for details",
-            requirements: "Visit website for full requirements",
-            link: link || source.url,
-          })
+        if (
+          name &&
+          name.length > 10 &&
+          name.length < 200 &&
+          link &&
+          (containsKeyword || link.includes("scholarship"))
+        ) {
+          scholarshipLinks.push(link)
         }
       } catch (error) {
         logger.warn(`Error parsing element from ${source.name}: ${error.message}`)
       }
     })
 
-    const validScholarships = scholarships
-      .filter(
-        (s, index, self) =>
-          index ===
-          self.findIndex(
-            (t) => t.name.toLowerCase() === s.name.toLowerCase() || (t.link && s.link && t.link === s.link),
-          ),
-      )
-      .slice(0, 8) // Limit per source
+    // Remove duplicates
+    const uniqueLinks = [...new Set(scholarshipLinks)].slice(0, 8)
 
-    logger.info(`Found ${validScholarships.length} valid scholarships from ${source.name}`)
-    return { success: true, scholarships: validScholarships, source: source.name }
+    logger.info(`Found ${uniqueLinks.length} unique scholarship links from ${source.name}`)
+    return { success: true, links: uniqueLinks, source: source.name }
   } catch (error) {
     logger.error(`Error scraping ${source.name}: ${error.message}`)
     return { success: false, error: error.message, source: source.name }
   }
 }
 
-// Function to discover and add new scholarships
 async function discoverOnlineScholarships() {
   try {
-    logger.info("Starting online scholarship discovery...")
+    logger.info("Starting online scholarship link discovery...")
 
     const results = []
     let totalFound = 0
@@ -224,23 +201,31 @@ async function discoverOnlineScholarships() {
 
       const result = await scrapeScholarshipsFromSite(source)
 
-      if (result.success && result.scholarships.length > 0) {
-        totalFound += result.scholarships.length
+      if (result.success && result.links && result.links.length > 0) {
+        totalFound += result.links.length
+        let addedCount = 0
 
-        // Process the scholarships (add to database)
-        const processResult = await processScholarshipData(result.scholarships)
-
-        if (processResult.success) {
-          const addedCount = processResult.results.filter((r) => r.status === "added").length
-          totalAdded += addedCount
-
-          results.push({
-            source: result.source,
-            found: result.scholarships.length,
-            added: addedCount,
-            results: processResult.results,
-          })
+        // Add each link to the existing link collection system
+        for (const link of result.links) {
+          try {
+            const storeResult = await storeLink(link, `discovery-${Date.now()}`, "scholarship-bot")
+            if (storeResult.success) {
+              addedCount++
+            } else if (storeResult.message !== "Link already exists in database") {
+              logger.warn(`Failed to store link ${link}: ${storeResult.message}`)
+            }
+          } catch (error) {
+            logger.warn(`Error storing link ${link}: ${error.message}`)
+          }
         }
+
+        totalAdded += addedCount
+
+        results.push({
+          source: result.source,
+          found: result.links.length,
+          added: addedCount,
+        })
       } else {
         results.push({
           source: result.source,
@@ -253,7 +238,7 @@ async function discoverOnlineScholarships() {
       await new Promise((resolve) => setTimeout(resolve, getRandomDelay()))
     }
 
-    logger.info(`Online scholarship discovery completed. Found: ${totalFound}, Added: ${totalAdded}`)
+    logger.info(`Online scholarship link discovery completed. Found: ${totalFound}, Added: ${totalAdded}`)
 
     return {
       success: true,
@@ -262,12 +247,11 @@ async function discoverOnlineScholarships() {
       results,
     }
   } catch (error) {
-    logger.error(`Error in online scholarship discovery: ${error.message}`)
+    logger.error(`Error in online scholarship link discovery: ${error.message}`)
     return { success: false, error: error.message }
   }
 }
 
-// Function to enable/disable scholarship sources
 function toggleScholarshipSource(sourceName, enabled) {
   const source = SCHOLARSHIP_SOURCES.find((s) => s.name === sourceName)
   if (source) {

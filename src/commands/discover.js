@@ -56,7 +56,9 @@ module.exports = {
         const embed = new EmbedBuilder()
           .setColor("#00ff00")
           .setTitle("Online Scholarship Discovery Complete")
-          .setDescription(`Found ${result.totalFound} scholarships, added ${result.totalAdded} new ones.`)
+          .setDescription(
+            `Found ${result.totalFound} scholarship links, added ${result.totalAdded} new ones to the link collection.`,
+          )
 
         if (result.results.length > 0) {
           const sourceResults = result.results
@@ -68,6 +70,12 @@ module.exports = {
             value: sourceResults.length > 1024 ? sourceResults.substring(0, 1021) + "..." : sourceResults,
           })
         }
+
+        embed.addFields({
+          name: "Next Steps",
+          value:
+            "Use `/links` command to view and process the discovered scholarship links through your normal workflow.",
+        })
 
         await interaction.editReply({ embeds: [embed] })
       } else if (subcommand === "sources") {
