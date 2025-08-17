@@ -3,18 +3,27 @@ const cheerio = require("cheerio")
 const logger = require("../utils/logger.js")
 const { processScholarshipData } = require("./linkService.js")
 
-// List of scholarship websites to scrape
 const SCHOLARSHIP_SOURCES = [
+  {
+    name: "Fastweb",
+    url: "https://www.fastweb.com/college-scholarships/articles",
+    selector: ".scholarship-result",
+    enabled: true,
+  },
+  {
+    name: "College Board",
+    url: "https://bigfuture.collegeboard.org/scholarships-and-grants",
+    selector: ".scholarship-item",
+    enabled: true,
+  },
   {
     name: "Scholarships.com",
     url: "https://www.scholarships.com/financial-aid/college-scholarships/scholarships-by-type/",
     selector: ".scholarship-item",
-    enabled: false, // Disabled by default due to potential rate limiting
+    enabled: false, // Keep disabled due to anti-bot measures
   },
-  // Add more sources as needed
 ]
 
-// Function to scrape scholarships from a website
 async function scrapeScholarshipsFromSite(source) {
   try {
     logger.info(`Scraping scholarships from ${source.name}...`)
@@ -22,30 +31,41 @@ async function scrapeScholarshipsFromSite(source) {
     const response = await axios.get(source.url, {
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br",
+        DNT: "1",
+        Connection: "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
       },
-      timeout: 10000,
+      timeout: 15000,
+      maxRedirects: 5,
     })
 
     const $ = cheerio.load(response.data)
     const scholarships = []
 
-    // This is a basic example - each site would need custom parsing
-    $(source.selector).each((index, element) => {
+    const elements = $(source.selector).length > 0 ? $(source.selector) : $("article, .card, .item, .result")
+
+    elements.each((index, element) => {
       try {
-        const name = $(element).find("h3, .title, .name").first().text().trim()
-        const deadline = $(element).find(".deadline, .date").first().text().trim()
-        const amount = $(element).find(".amount, .value").first().text().trim()
-        const description = $(element).find(".description, .summary").first().text().trim()
+        const name =
+          $(element).find("h1, h2, h3, h4, .title, .name, .heading").first().text().trim() ||
+          $(element).find("a").first().text().trim()
+
+        const deadline = $(element).find(".deadline, .date, .expires, .due").first().text().trim()
+        const amount = $(element).find(".amount, .value, .award, .prize").first().text().trim()
+        const description = $(element).find(".description, .summary, .excerpt, p").first().text().trim()
         const link = $(element).find("a").first().attr("href")
 
-        if (name && link) {
+        if (name && name.length > 5 && link) {
           scholarships.push({
-            name,
+            name: name.substring(0, 200), // Limit length
             deadline: deadline || "Not specified",
-            amount: amount || "Not specified",
-            description: description || "No description available",
-            requirements: "Check website for requirements",
+            amount: amount || "Varies",
+            description: description ? description.substring(0, 500) : "Check website for details",
+            requirements: "Visit website for full requirements",
             link: link.startsWith("http") ? link : `${new URL(source.url).origin}${link}`,
           })
         }
@@ -54,7 +74,11 @@ async function scrapeScholarshipsFromSite(source) {
       }
     })
 
-    return { success: true, scholarships, source: source.name }
+    const validScholarships = scholarships.filter(
+      (s, index, self) => s.name && s.link && index === self.findIndex((t) => t.name === s.name || t.link === s.link),
+    )
+
+    return { success: true, scholarships: validScholarships, source: source.name }
   } catch (error) {
     logger.error(`Error scraping ${source.name}: ${error.message}`)
     return { success: false, error: error.message, source: source.name }
@@ -104,8 +128,7 @@ async function discoverOnlineScholarships() {
         })
       }
 
-      // Add delay between requests to be respectful
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      await new Promise((resolve) => setTimeout(resolve, getRandomDelay()))
     }
 
     logger.info(`Online scholarship discovery completed. Found: ${totalFound}, Added: ${totalAdded}`)
@@ -131,6 +154,10 @@ function toggleScholarshipSource(sourceName, enabled) {
     return true
   }
   return false
+}
+
+function getRandomDelay() {
+  return Math.floor(Math.random() * 3000) + 2000 // 2-5 seconds
 }
 
 module.exports = {

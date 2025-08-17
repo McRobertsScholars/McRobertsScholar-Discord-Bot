@@ -29,10 +29,17 @@ module.exports = {
           option.setName("enabled").setDescription("Enable or disable the source").setRequired(true),
         ),
     )
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
     try {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return await interaction.reply({
+          content: "❌ You need Administrator permissions to use this command.",
+          ephemeral: true,
+        })
+      }
+
       await interaction.deferReply({ ephemeral: true })
 
       const subcommand = interaction.options.getSubcommand()
