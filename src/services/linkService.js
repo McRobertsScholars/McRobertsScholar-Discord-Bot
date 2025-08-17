@@ -143,17 +143,71 @@ async function processScholarshipData(scholarshipData) {
 // Remove expired scholarships
 async function removeExpiredScholarships() {
   try {
-    const today = new Date().toISOString().split("T")[0]
+    const today = new Date()
+    const todayString = today.toISOString().split("T")[0] // YYYY-MM-DD format
 
-    // Find scholarships with deadlines in the past
-    const { data: expiredScholarships, error: findError } = await supabase
+    console.log("[v0] Starting cleanup process, today's date:", todayString)
+
+    // Get all scholarships to check their deadlines manually
+    const { data: allScholarships, error: fetchError } = await supabase
       .from("scholarships")
       .select("id, name, deadline")
-      .lt("deadline", today)
+      .not("deadline", "is", null)
 
-    if (findError) throw findError
+    if (fetchError) throw fetchError
 
-    if (!expiredScholarships || expiredScholarships.length === 0) {
+    console.log("[v0] Found", allScholarships?.length || 0, "scholarships with deadlines")
+
+    if (!allScholarships || allScholarships.length === 0) {
+      return { success: true, message: "No scholarships with deadlines found", count: 0 }
+    }
+
+    // Filter expired scholarships by parsing dates properly
+    const expiredScholarships = allScholarships.filter((scholarship) => {
+      if (!scholarship.deadline) return false
+
+      try {
+        // Handle various date formats
+        let deadlineDate
+        const deadline = scholarship.deadline.toString().trim()
+
+        // Try parsing different date formats
+        if (deadline.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          // YYYY-MM-DD format
+          deadlineDate = new Date(deadline + "T23:59:59")
+        } else if (deadline.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
+          // MM/DD/YYYY format
+          deadlineDate = new Date(deadline + " 23:59:59")
+        } else if (deadline.match(/^\d{1,2}-\d{1,2}-\d{4}$/)) {
+          // MM-DD-YYYY format
+          const parts = deadline.split("-")
+          deadlineDate = new Date(`${parts[0]}/${parts[1]}/${parts[2]} 23:59:59`)
+        } else {
+          // Try generic date parsing
+          deadlineDate = new Date(deadline)
+        }
+
+        // Check if date is valid and in the past
+        if (isNaN(deadlineDate.getTime())) {
+          console.log("[v0] Invalid date format for scholarship:", scholarship.name, "deadline:", deadline)
+          return false
+        }
+
+        const isExpired = deadlineDate < today
+        if (isExpired) {
+          console.log("[v0] Expired scholarship found:", scholarship.name, "deadline:", deadline)
+        }
+
+        return isExpired
+      } catch (error) {
+        console.log("[v0] Error parsing date for scholarship:", scholarship.name, error.message)
+        return false
+      }
+    })
+
+    console.log("[v0] Found", expiredScholarships.length, "expired scholarships")
+
+    if (expiredScholarships.length === 0) {
       return { success: true, message: "No expired scholarships found", count: 0 }
     }
 
@@ -176,11 +230,58 @@ async function removeExpiredScholarships() {
   }
 }
 
+async function scheduleAutomaticCleanup() {
+  try {
+    // Run cleanup immediately on startup
+    logger.info("Running initial scholarship cleanup...")
+    const result = await removeExpiredScholarships()
+    if (result.success && result.count > 0) {
+      logger.info(`Initial cleanup: ${result.message}`)
+    }
+
+    // Schedule cleanup to run daily at 2 AM
+    const runCleanup = async () => {
+      try {
+        logger.info("Running scheduled scholarship cleanup...")
+        const result = await removeExpiredScholarships()
+        if (result.success && result.count > 0) {
+          logger.info(`Scheduled cleanup: ${result.message}`)
+        }
+      } catch (error) {
+        logger.error(`Scheduled cleanup failed: ${error.message}`)
+      }
+    }
+
+    // Calculate time until next 2 AM
+    const now = new Date()
+    const next2AM = new Date()
+    next2AM.setHours(2, 0, 0, 0)
+
+    // If it's already past 2 AM today, schedule for tomorrow
+    if (now > next2AM) {
+      next2AM.setDate(next2AM.getDate() + 1)
+    }
+
+    const timeUntilNext2AM = next2AM.getTime() - now.getTime()
+
+    // Set initial timeout for next 2 AM
+    setTimeout(() => {
+      runCleanup()
+      // Then run every 24 hours
+      setInterval(runCleanup, 24 * 60 * 60 * 1000)
+    }, timeUntilNext2AM)
+
+    logger.info(`Automatic cleanup scheduled. Next run: ${next2AM.toLocaleString()}`)
+  } catch (error) {
+    logger.error(`Error setting up automatic cleanup: ${error.message}`)
+  }
+}
+
 module.exports = {
   storeLink,
   getUnprocessedLinks,
   markLinksAsProcessed,
   processScholarshipData,
   removeExpiredScholarships,
+  scheduleAutomaticCleanup, // Export new function
 }
-

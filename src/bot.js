@@ -89,6 +89,9 @@ function startBot() {
     const { setupPersistentMessage } = require("./persistentMessage.js")
     setupPersistentMessage(client)
     registerCommands()
+
+    const { scheduleAutomaticCleanup } = require("./services/linkService.js")
+    scheduleAutomaticCleanup()
   })
 
   client
@@ -98,4 +101,3 @@ function startBot() {
 }
 
 module.exports = { startBot, client }
-
