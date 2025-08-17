@@ -58,13 +58,7 @@ async function parseRSSFeed(url, sourceName) {
         const link = $(element).find("link").text().trim()
         const description = $(element).find("description").text().trim()
 
-        // Only include if it looks like a scholarship (contains scholarship keywords)
-        const scholarshipKeywords = ["scholarship", "grant", "award", "financial aid", "funding"]
-        const containsKeyword = scholarshipKeywords.some(
-          (keyword) => title.toLowerCase().includes(keyword) || description.toLowerCase().includes(keyword),
-        )
-
-        if (title && link && containsKeyword) {
+        if (title && link && isValidScholarshipLink(link, title, description)) {
           scholarshipLinks.push(link)
         }
       } catch (error) {
@@ -77,6 +71,119 @@ async function parseRSSFeed(url, sourceName) {
     logger.error(`Error parsing RSS feed ${sourceName}: ${error.message}`)
     return []
   }
+}
+
+function isValidScholarshipLink(link, title = "", description = "") {
+  const text = `${title} ${description} ${link}`.toLowerCase()
+
+  // Exclude non-scholarship content
+  const excludeKeywords = [
+    "blog",
+    "article",
+    "guide",
+    "tips",
+    "advice",
+    "how-to",
+    "college-life",
+    "login",
+    "register",
+    "sign-up",
+    "account",
+    "profile",
+    "dashboard",
+    "category",
+    "categories",
+    "browse",
+    "search",
+    "filter",
+    "by-type",
+    "about",
+    "contact",
+    "privacy",
+    "terms",
+    "faq",
+    "help",
+    "news",
+    "press",
+    "media",
+    "announcement",
+    "update",
+    "general",
+    "overview",
+    "introduction",
+    "getting-started",
+    "packing",
+    "moving",
+    "transition",
+    "mental-health",
+    "stress",
+    "survey",
+    "research",
+    "study",
+    "report",
+    "statistics",
+  ]
+
+  // Check for excluded content
+  if (excludeKeywords.some((keyword) => text.includes(keyword))) {
+    return false
+  }
+
+  // Exclude URLs with problematic patterns
+  const excludeUrlPatterns = [
+    "/blog/",
+    "/article/",
+    "/news/",
+    "/guide/",
+    "/tips/",
+    "/login",
+    "/register",
+    "/sign-up",
+    "/account/",
+    "/category/",
+    "/browse/",
+    "/search/",
+    "/filter/",
+    "/about",
+    "/contact",
+    "/help",
+    "/faq",
+    "utm_",
+    "__page=",
+    "?ref=",
+    "&utm_",
+  ]
+
+  if (excludeUrlPatterns.some((pattern) => link.includes(pattern))) {
+    return false
+  }
+
+  // Must contain actual scholarship indicators
+  const scholarshipKeywords = [
+    "scholarship",
+    "grant",
+    "award",
+    "fellowship",
+    "contest",
+    "competition",
+    "apply",
+    "application",
+    "deadline",
+    "eligibility",
+    "requirements",
+    "financial-aid",
+    "funding",
+    "money",
+    "tuition",
+    "college-fund",
+  ]
+
+  const hasScholarshipKeyword = scholarshipKeywords.some((keyword) => text.includes(keyword))
+
+  // Additional validation for URLs
+  const hasScholarshipInUrl = scholarshipKeywords.some((keyword) => link.toLowerCase().includes(keyword))
+
+  return hasScholarshipKeyword || hasScholarshipInUrl
 }
 
 async function scrapeScholarshipsFromSite(source) {
@@ -157,16 +264,7 @@ async function scrapeScholarshipsFromSite(source) {
           link = link.startsWith("/") ? baseUrl + link : baseUrl + "/" + link
         }
 
-        const scholarshipKeywords = ["scholarship", "grant", "award", "financial", "funding", "college", "student"]
-        const containsKeyword = scholarshipKeywords.some((keyword) => name.toLowerCase().includes(keyword))
-
-        if (
-          name &&
-          name.length > 10 &&
-          name.length < 200 &&
-          link &&
-          (containsKeyword || link.includes("scholarship"))
-        ) {
+        if (name && name.length > 10 && name.length < 200 && link && isValidScholarshipLink(link, name)) {
           scholarshipLinks.push(link)
         }
       } catch (error) {
