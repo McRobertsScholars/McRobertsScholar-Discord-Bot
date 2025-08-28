@@ -289,6 +289,20 @@ function setupWebhooks(app) {
     }
   })
 
+  app.get("/api/test", (req, res) => {
+    res.json({
+      success: true,
+      message: "Discord bot API is working!",
+      timestamp: new Date().toISOString(),
+      endpoints: [
+        "POST /api/links - Store discovered links",
+        "GET /api/links/unprocessed - Get links for processing",
+        "POST /api/links/processed - Mark links as processed",
+        "POST /api/scholarships - Store processed scholarship data",
+      ],
+    })
+  })
+
   logger.info("Webhook endpoints configured for n8n integration")
 }
 
