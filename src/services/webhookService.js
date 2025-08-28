@@ -2,7 +2,9 @@ const express = require("express")
 const { storeLink, processScholarshipData, getUnprocessedLinks, markLinksAsProcessed } = require("./linkService")
 const { extractScholarshipInfo, fetchPageContent } = require("./freeAiService")
 const logger = require("../utils/logger")
-const { supabase } = require("../utils/supabaseClient")
+const { createClient } = require("@supabase/supabase-js")
+const config = require("../utils/config")
+const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY)
 
 function setupWebhooks(app) {
   app.post("/webhook/links", async (req, res) => {
