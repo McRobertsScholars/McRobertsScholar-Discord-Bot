@@ -6,14 +6,20 @@ const { setupDiscordService } = require("./services/discordService.js")
 const { setupDatabase } = require("./utils/setupDatabase.js")
 const { removeExpiredScholarships } = require("./services/linkService.js")
 const { testSupabaseConnection } = require("./services/supabaseService.js")
+const { setupWebhooks } = require("./services/webhookService.js")
 
 // Express server setup
 const app = express()
 const PORT = process.env.PORT || 10000
 
+app.use(express.json({ limit: "10mb" }))
+app.use(express.urlencoded({ extended: true }))
+
 app.get("/", (req, res) => {
   res.send("Bot is running!")
 })
+
+setupWebhooks(app)
 
 // Start Express server first
 app.listen(PORT, () => {
@@ -40,7 +46,6 @@ app.listen(PORT, () => {
   ) // Run once every 24 hours
 })
 
-// Keep-alive ping every 14 minutes
 const WEBSITE_URL = process.env.RENDER_EXTERNAL_URL
 if (WEBSITE_URL) {
   setInterval(
@@ -59,4 +64,3 @@ try {
 } catch (error) {
   logger.error(`Error starting application: ${error.message}`)
 }
-

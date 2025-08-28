@@ -1,0 +1,114 @@
+const axios = require("axios")
+const logger = require("../utils/logger.js")
+
+// Free AI services you can use
+const AI_SERVICES = {
+  GROQ: {
+    url: "https://api.groq.com/openai/v1/chat/completions",
+    model: "llama3-8b-8192", // Free tier available
+    headers: (apiKey) => ({
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    }),
+  },
+  HUGGINGFACE: {
+    url: "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium",
+    headers: (apiKey) => ({
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    }),
+  },
+}
+
+async function extractScholarshipInfo(url, content, service = "GROQ") {
+  try {
+    const prompt = `Extract scholarship information from this content and return ONLY valid JSON:
+
+URL: ${url}
+Content: ${content.substring(0, 2000)}...
+
+Return JSON in this exact format:
+{
+  "name": "scholarship name",
+  "deadline": "YYYY-MM-DD or null",
+  "amount": "dollar amount or 'varies' or 'not specified'",
+  "description": "brief description",
+  "requirements": "eligibility requirements",
+  "link": "${url}"
+}
+
+If this is not a scholarship, return: {"error": "not a scholarship"}`
+
+    const config = AI_SERVICES[service]
+    const response = await axios.post(
+      config.url,
+      {
+        model: config.model,
+        messages: [
+          {
+            role: "system",
+            content: "You are a scholarship information extractor. Return only valid JSON.",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+        max_tokens: 500,
+        temperature: 0.1,
+      },
+      {
+        headers: config.headers(process.env.GROQ_API_KEY), // You'll need to add this to your config
+        timeout: 30000,
+      },
+    )
+
+    const aiResponse = response.data.choices[0].message.content.trim()
+
+    // Try to parse the JSON response
+    try {
+      const scholarshipData = JSON.parse(aiResponse)
+      if (scholarshipData.error) {
+        return { success: false, reason: "not_scholarship" }
+      }
+      return { success: true, data: scholarshipData }
+    } catch (parseError) {
+      logger.warn(`Failed to parse AI response: ${aiResponse}`)
+      return { success: false, reason: "parse_error" }
+    }
+  } catch (error) {
+    logger.error(`Error extracting scholarship info: ${error.message}`)
+    return { success: false, reason: "api_error", error: error.message }
+  }
+}
+
+// Simple content fetcher using free methods
+async function fetchPageContent(url) {
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+      timeout: 15000,
+      maxContentLength: 50000, // Limit content size
+    })
+
+    // Simple text extraction (you could enhance this)
+    const content = response.data
+      .replace(/<script[^>]*>.*?<\/script>/gis, "")
+      .replace(/<style[^>]*>.*?<\/style>/gis, "")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+
+    return { success: true, content: content.substring(0, 3000) }
+  } catch (error) {
+    logger.error(`Error fetching content from ${url}: ${error.message}`)
+    return { success: false, error: error.message }
+  }
+}
+
+module.exports = {
+  extractScholarshipInfo,
+  fetchPageContent,
+}
