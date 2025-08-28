@@ -12,6 +12,21 @@ module.exports = {
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY, // For knowledge base access
   CHANNEL_ID: process.env.CHANNEL_ID,
   SERVER_ID: "1295906651332935743",
-  CHANNEL_ID: "1339801789725278208",
+  MEETING_CHANNEL_ID: "1339801896613056554", // Meeting announcement channel
   RENDER_EXTERNAL_URL: process.env.RENDER_EXTERNAL_URL,
+
+  GOOGLE_SHEETS_API_KEY: process.env.GOOGLE_SHEETS_API_KEY,
+  GOOGLE_CLIENT_EMAIL: process.env.GOOGLE_CLIENT_EMAIL,
+  GOOGLE_PRIVATE_KEY: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n"), // Handle newlines in private key
+  GOOGLE_SPREADSHEET_ID: process.env.GOOGLE_SPREADSHEET_ID,
+
+  GMAIL_CLIENT_ID: process.env.GMAIL_CLIENT_ID,
+  GMAIL_CLIENT_SECRET: process.env.GMAIL_CLIENT_SECRET,
+  GMAIL_REFRESH_TOKEN: process.env.GMAIL_REFRESH_TOKEN,
+  GMAIL_FROM_EMAIL: process.env.GMAIL_FROM_EMAIL,
+
+  SMTP_HOST: process.env.SMTP_HOST,
+  SMTP_PORT: process.env.SMTP_PORT || 587,
+  SMTP_USER: process.env.SMTP_USER,
+  SMTP_PASS: process.env.SMTP_PASS,
 }
