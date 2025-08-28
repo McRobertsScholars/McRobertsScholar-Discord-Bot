@@ -1,7 +1,8 @@
 const express = require("express")
-const { storeLink, processScholarshipData } = require("./linkService")
+const { storeLink, processScholarshipData, getUnprocessedLinks, markLinksAsProcessed } = require("./linkService")
 const { extractScholarshipInfo, fetchPageContent } = require("./freeAiService")
 const logger = require("../utils/logger")
+const { supabase } = require("../utils/supabaseClient")
 
 function setupWebhooks(app) {
   app.post("/webhook/links", async (req, res) => {
@@ -46,7 +47,6 @@ function setupWebhooks(app) {
 
   app.get("/api/unprocessed-links", async (req, res) => {
     try {
-      const { getUnprocessedLinks } = require("./linkService")
       const limit = Number.parseInt(req.query.limit) || 10
 
       const result = await getUnprocessedLinks()
@@ -97,7 +97,6 @@ function setupWebhooks(app) {
 
       // Mark link as processed if linkId provided
       if (linkId) {
-        const { markLinksAsProcessed } = require("./linkService")
         await markLinksAsProcessed([linkId])
       }
 
@@ -107,6 +106,185 @@ function setupWebhooks(app) {
       })
     } catch (error) {
       logger.error(`Process link API error: ${error.message}`)
+      res.status(500).json({ error: error.message })
+    }
+  })
+
+  // New endpoint for n8n to store discovered links
+  app.post("/api/links", async (req, res) => {
+    try {
+      const { links } = req.body
+
+      if (!links || !Array.isArray(links)) {
+        return res.status(400).json({ error: "Links array is required" })
+      }
+
+      const results = []
+      for (const linkData of links) {
+        // Handle both simple URLs and link objects
+        const url = typeof linkData === "string" ? linkData : linkData.url
+        const source = linkData.source || "n8n-discovery"
+
+        if (url) {
+          const result = await storeLink(url, `n8n-${Date.now()}`, source)
+          results.push({
+            url,
+            success: result.success,
+            message: result.message,
+          })
+        }
+      }
+
+      const successCount = results.filter((r) => r.success).length
+      logger.info(`N8N stored ${successCount}/${links.length} new scholarship links`)
+
+      res.json({
+        success: true,
+        stored: successCount,
+        total: links.length,
+        results,
+      })
+    } catch (error) {
+      logger.error(`N8N links API error: ${error.message}`)
+      res.status(500).json({ error: error.message })
+    }
+  })
+
+  // New endpoint for n8n to get unprocessed links for AI processing
+  app.get("/api/links/unprocessed", async (req, res) => {
+    try {
+      const limit = Number.parseInt(req.query.limit) || 50
+      const result = await getUnprocessedLinks()
+
+      if (!result.success) {
+        return res.status(500).json({ error: result.message })
+      }
+
+      // Format for n8n consumption
+      const links = result.data.slice(0, limit).map((link) => ({
+        id: link.id,
+        url: link.url,
+        created_at: link.created_at,
+        source: link.user_id || "unknown",
+      }))
+
+      logger.info(`N8N requested ${links.length} unprocessed links`)
+      res.json(links)
+    } catch (error) {
+      logger.error(`N8N unprocessed links API error: ${error.message}`)
+      res.status(500).json({ error: error.message })
+    }
+  })
+
+  // New endpoint for n8n to mark links as processed after AI extraction
+  app.post("/api/links/processed", async (req, res) => {
+    try {
+      const { linkIds } = req.body
+
+      if (!linkIds || !Array.isArray(linkIds)) {
+        return res.status(400).json({ error: "linkIds array is required" })
+      }
+
+      const result = await markLinksAsProcessed(linkIds)
+
+      if (result.success) {
+        logger.info(`N8N marked ${linkIds.length} links as processed`)
+        res.json({ success: true, processed: linkIds.length })
+      } else {
+        res.status(500).json({ error: result.message })
+      }
+    } catch (error) {
+      logger.error(`N8N processed links API error: ${error.message}`)
+      res.status(500).json({ error: error.message })
+    }
+  })
+
+  // Enhanced scholarship processing endpoint for n8n
+  app.post("/api/scholarships", async (req, res) => {
+    try {
+      const scholarshipData = req.body
+
+      // Handle both single scholarship and array
+      const scholarships = Array.isArray(scholarshipData) ? scholarshipData : [scholarshipData]
+
+      const results = []
+      let addedCount = 0
+
+      for (const scholarship of scholarships) {
+        try {
+          // Validate required fields
+          if (!scholarship.name || scholarship.name.trim().length < 3) {
+            results.push({
+              name: scholarship.name || "Unknown",
+              status: "skipped",
+              reason: "Invalid or missing name",
+            })
+            continue
+          }
+
+          // Check for duplicates
+          const { data: existing } = await supabase
+            .from("scholarships")
+            .select("id")
+            .eq("name", scholarship.name.trim())
+            .limit(1)
+
+          if (existing && existing.length > 0) {
+            results.push({
+              name: scholarship.name,
+              status: "skipped",
+              reason: "Already exists",
+            })
+            continue
+          }
+
+          // Insert new scholarship
+          const { error } = await supabase.from("scholarships").insert([
+            {
+              name: scholarship.name.trim(),
+              description: scholarship.description || "",
+              amount: scholarship.amount || null,
+              deadline: scholarship.deadline || null,
+              eligibility: scholarship.eligibility || "",
+              application_url: scholarship.application_url || scholarship.applicationUrl || "",
+              requirements: scholarship.requirements || "",
+              source: scholarship.source || "n8n-automation",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+          ])
+
+          if (error) {
+            results.push({
+              name: scholarship.name,
+              status: "error",
+              reason: error.message,
+            })
+          } else {
+            results.push({
+              name: scholarship.name,
+              status: "added",
+            })
+            addedCount++
+          }
+        } catch (scholarshipError) {
+          results.push({
+            name: scholarship.name || "Unknown",
+            status: "error",
+            reason: scholarshipError.message,
+          })
+        }
+      }
+
+      logger.info(`N8N processed ${scholarships.length} scholarships, added ${addedCount}`)
+      res.json({
+        success: true,
+        processed: scholarships.length,
+        added: addedCount,
+        results,
+      })
+    } catch (error) {
+      logger.error(`N8N scholarships API error: ${error.message}`)
       res.status(500).json({ error: error.message })
     }
   })
