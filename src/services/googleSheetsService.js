@@ -6,6 +6,7 @@ class GoogleSheetsService {
   constructor() {
     this.auth = null
     this.sheets = null
+    this.drive = null
     this.initializeAuth()
   }
 
@@ -21,13 +22,67 @@ class GoogleSheetsService {
           client_email: config.GOOGLE_CLIENT_EMAIL,
           private_key: config.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"), // Fix newline characters
         },
-        scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+        scopes: [
+          "https://www.googleapis.com/auth/spreadsheets.readonly",
+          "https://www.googleapis.com/auth/drive.readonly",
+        ],
       })
 
       this.sheets = google.sheets({ version: "v4", auth: this.auth })
-      logger.info("Google Sheets service initialized successfully")
+      this.drive = google.drive({ version: "v3", auth: this.auth })
+      logger.info("Google Sheets and Drive services initialized successfully")
     } catch (error) {
-      logger.error("Failed to initialize Google Sheets service:", error)
+      logger.error("Failed to initialize Google services:", error)
+    }
+  }
+
+  async findMostRecentSpreadsheet() {
+    try {
+      if (!this.drive) {
+        throw new Error("Google Drive service not initialized")
+      }
+
+      logger.info("Searching for spreadsheets with year patterns...")
+
+      const response = await this.drive.files.list({
+        q: "mimeType='application/vnd.google-apps.spreadsheet' and name contains '20'",
+        fields: "files(id, name, createdTime, modifiedTime)",
+        orderBy: "modifiedTime desc",
+      })
+
+      const files = response.data.files
+      if (!files || files.length === 0) {
+        throw new Error(
+          "No spreadsheets found. Please create a spreadsheet with a year in the name (e.g., 'McRoberts Scholars 2026/2027')",
+        )
+      }
+
+      logger.info(`Found ${files.length} potential spreadsheets`)
+
+      const yearFiles = files
+        .filter((file) => {
+          return /\d{4}[/\-_]\d{4}|\d{4}/.test(file.name)
+        })
+        .sort((a, b) => {
+          const yearA = Number.parseInt(a.name.match(/\d{4}/)[0])
+          const yearB = Number.parseInt(b.name.match(/\d{4}/)[0])
+          return yearB - yearA
+        })
+
+      if (yearFiles.length === 0) {
+        const fileNames = files.map((f) => f.name).join(", ")
+        throw new Error(
+          `No spreadsheets with year patterns found. Available spreadsheets: ${fileNames}\nPlease create a spreadsheet with a year in the name (e.g., 'McRoberts Scholars 2026/2027')`,
+        )
+      }
+
+      const mostRecentFile = yearFiles[0]
+      logger.info(`Auto-discovered most recent spreadsheet: "${mostRecentFile.name}" (ID: ${mostRecentFile.id})`)
+
+      return mostRecentFile.id
+    } catch (error) {
+      logger.error("Error finding spreadsheets:", error.message)
+      throw error
     }
   }
 
@@ -37,29 +92,40 @@ class GoogleSheetsService {
         throw new Error("Google Sheets service not initialized. Please check your Google API credentials.")
       }
 
-      if (!config.GOOGLE_SPREADSHEET_ID) {
-        throw new Error("GOOGLE_SPREADSHEET_ID environment variable not set")
+      let spreadsheetId = config.GOOGLE_SPREADSHEET_ID
+
+      if (!spreadsheetId) {
+        logger.info("No GOOGLE_SPREADSHEET_ID configured, attempting auto-discovery...")
+        spreadsheetId = await this.findMostRecentSpreadsheet()
       }
 
       let spreadsheet
       try {
         spreadsheet = await this.sheets.spreadsheets.get({
-          spreadsheetId: config.GOOGLE_SPREADSHEET_ID,
+          spreadsheetId: spreadsheetId,
         })
       } catch (error) {
         if (error.code === 404) {
-          throw new Error(
-            `Spreadsheet not found. Please check that:\n1. The spreadsheet ID is correct: ${config.GOOGLE_SPREADSHEET_ID}\n2. The spreadsheet exists and is accessible\n3. The service account has permission to read the spreadsheet`,
-          )
+          if (config.GOOGLE_SPREADSHEET_ID) {
+            logger.warn(`Configured spreadsheet ID not found, attempting auto-discovery...`)
+            spreadsheetId = await this.findMostRecentSpreadsheet()
+            spreadsheet = await this.sheets.spreadsheets.get({
+              spreadsheetId: spreadsheetId,
+            })
+          } else {
+            throw new Error(
+              `Spreadsheet not found. Please check that:\n1. The spreadsheet exists and is accessible\n2. The service account has permission to read the spreadsheet`,
+            )
+          }
+        } else {
+          throw error
         }
-        throw error
       }
 
       const sheetNames = spreadsheet.data.sheets.map((sheet) => sheet.properties.title)
       logger.info(`Available sheets: ${sheetNames.join(", ")}`)
 
       const yearSheets = sheetNames.filter((name) => {
-        // Match patterns like: 2026/2027, 2026-2027, 2026_2027, or just 2026
         return /\d{4}[/\-_]\d{4}|\d{4}/.test(name)
       })
 
@@ -79,10 +145,9 @@ class GoogleSheetsService {
 
       logger.info(`Using most recent sheet: ${mostRecentSheet}`)
 
-      // Get data from the most recent year sheet
       const response = await this.sheets.spreadsheets.values.get({
-        spreadsheetId: config.GOOGLE_SPREADSHEET_ID,
-        range: `${mostRecentSheet}!A:Z`, // Get all columns
+        spreadsheetId: spreadsheetId,
+        range: `${mostRecentSheet}!A:Z`,
       })
 
       const rows = response.data.values
@@ -94,7 +159,6 @@ class GoogleSheetsService {
         throw new Error(`Only headers found in sheet "${mostRecentSheet}". Please add member data below the headers.`)
       }
 
-      // Assume first row is headers
       const headers = rows[0].map((header) => header.toLowerCase())
       logger.info(`Headers found: ${headers.join(", ")}`)
 
@@ -115,7 +179,6 @@ class GoogleSheetsService {
         )
       }
 
-      // Extract member data
       const members = []
       for (let i = 1; i < rows.length; i++) {
         const row = rows[i]
@@ -142,7 +205,7 @@ class GoogleSheetsService {
   }
 
   isConfigured() {
-    return !!(this.sheets && config.GOOGLE_SPREADSHEET_ID && config.GOOGLE_CLIENT_EMAIL && config.GOOGLE_PRIVATE_KEY)
+    return !!(this.sheets && this.drive && config.GOOGLE_CLIENT_EMAIL && config.GOOGLE_PRIVATE_KEY)
   }
 }
 
