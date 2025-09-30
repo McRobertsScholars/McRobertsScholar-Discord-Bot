@@ -156,6 +156,12 @@ module.exports = {
                         .setLabel("Preview")
                         .setStyle(ButtonStyle.Secondary)
                         .setEmoji("👁️")
+                    ,
+                    new ButtonBuilder()
+                        .setCustomId(`announce_send_test_${announcementId}`)
+                        .setLabel("Send Test Email")
+                        .setStyle(ButtonStyle.Secondary)
+                        .setEmoji("🧪")
                 );
             const row2 = new ActionRowBuilder()
                 .addComponents(
@@ -253,10 +259,23 @@ module.exports = {
                 embeds: [previewEmbed],
                 files
             });
+            const htmlBody = buildAnnouncementHtml(announcement);
             await interaction.followUp({
-                content: `**Email Preview:**\\n\\n**Subject:** ${announcement.topic}\\n\\n**Content:**\\n\`\`\`\\n${announcement.emailContent}\\n\`\`\``,
+                content: `**Email Preview (HTML source):**\\n\\n**Subject:** ${announcement.topic}\\n\\n\`\`\`html\n${htmlBody}\n\`\`\``,
                 ephemeral: true
             });
+        } else if (action === "send" && subAction === "test") {
+            await interaction.deferReply({ ephemeral: true });
+            try {
+                const requesterEmail = config.SMTP_USER;
+                const textBody = buildAnnouncementText(announcement);
+                const htmlBody = buildAnnouncementHtml(announcement);
+                await emailService.sendTestEmail(requesterEmail, announcement.topic, textBody, htmlBody);
+                await interaction.editReply({ content: `✅ Sent test email to ${requesterEmail}`, ephemeral: true });
+            } catch (err) {
+                logger.error("Error sending test email:", err);
+                await interaction.editReply({ content: `❌ Failed to send test email: ${err.message}`, ephemeral: true });
+            }
         } else if (action === "cancel") {
             await interaction.deferUpdate();
             pendingAnnouncements.delete(announcementId);
@@ -351,6 +370,54 @@ module.exports = {
     }
 };
 // Helper functions
+function buildAnnouncementText(announcement) {
+    return `Dear McRoberts Scholar,\n\n${announcement.emailContent}\n\nBest regards,\nMcRoberts Scholars Program`;
+}
+
+function buildAnnouncementHtml(announcement) {
+    const safeBody = (announcement.emailContent || '').replace(/\n/g, '<br>');
+    return `<!doctype html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>McRoberts Scholars - ${escapeHtml(announcement.topic)}</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f6f9fc;font-family:Segoe UI, Roboto, Helvetica, Arial, sans-serif;color:#222;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f9fc;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="background:#ffffff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);overflow:hidden;">
+            <tr>
+              <td style="padding:20px 24px;background:#0b72ff;color:#ffffff;font-size:18px;font-weight:600;">
+                McRoberts Scholars
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px;">
+                <h2 style="margin:0 0 12px 0;color:#0b3a82;font-size:20px;">${escapeHtml(announcement.topic)}</h2>
+                <div style="font-size:15px;line-height:1.6;">${safeBody}</div>
+                <hr style="border:none;border-top:1px solid #eee;margin:20px 0;" />
+                <p style="margin:0;color:#6b7280;font-size:13px;">Join our Discord: <a href="https://discord.gg/" style="color:#0b72ff;">Connect</a></p>
+                <p style="margin:16px 0 0 0;font-size:14px;color:#374151;">Best regards,<br>McRoberts Scholars Program</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+function escapeHtml(str) {
+    return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
 async function sendDiscordAnnouncement(interaction, announcement, announcementId) {
     try {
         const channel = interaction.client.channels.cache.get(announcement.channelId);
@@ -413,16 +480,13 @@ async function sendEmailAnnouncement(interaction, announcement, announcementId) 
         if (members.length === 0) {
             throw new Error("No member emails found!");
         }
-        const emailContent = `
-Dear McRoberts Scholar,
-${announcement.emailContent}
-Best regards,
-McRoberts Scholars Program
-        `.trim();
+        const textBody = buildAnnouncementText(announcement);
+        const htmlBody = buildAnnouncementHtml(announcement);
         const { results, errors } = await emailService.sendBulkEmail(
             members,
             announcement.topic,
-            emailContent
+            textBody,
+            htmlBody
         );
         let resultMessage = `✅ Email sent to ${results.length} recipients`;
         if (errors.length > 0) {

@@ -40,21 +40,22 @@ class EmailService {
   setupSMTP() {
     logger.info(`Setting up SMTP transporter for ${config.SMTP_USER}`);
     
-    // Use exact same configuration as your working test
+    // Configure from environment with safe defaults
     this.transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false, // use STARTTLS
+      host: config.SMTP_HOST || 'smtp.gmail.com',
+      port: config.SMTP_PORT || 587,
+      secure: !!config.SMTP_SECURE, // true for 465, false for STARTTLS
       auth: {
         user: config.SMTP_USER,
         pass: config.SMTP_PASS,
       },
       tls: {
-        // Do not fail on invalid certs (useful for some environments)
-        rejectUnauthorized: false
+        // Allow overriding cert validation in constrained environments like Render
+        rejectUnauthorized: config.SMTP_REJECT_UNAUTHORIZED !== false
       },
-      // Don't set connection timeouts for initial setup
-      // Only set timeout on actual send
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 100
     });
 
     // DON'T verify here - it causes timeouts on OnRender
@@ -113,30 +114,48 @@ class EmailService {
       };
     }
 
-    const results = [];
-    const errors = [];
+    try {
+      const emails = recipients
+        .map(r => (typeof r === 'string' ? r : r.email))
+        .filter(Boolean);
 
-    logger.info(`Starting bulk email send to ${recipients.length} recipients`);
-
-    for (const recipient of recipients) {
-      try {
-        await this.sendEmail(recipient.email, subject, text, html);
-        results.push({ email: recipient.email, status: "sent" });
-        // Add delay to avoid rate limiting
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      } catch (error) {
-        errors.push({ email: recipient.email, error: error.message });
-        logger.error(`Failed to send to ${recipient.email}: ${error.message}`);
+      if (emails.length === 0) {
+        throw new Error('No valid recipient emails provided');
       }
-    }
 
-    logger.info(`Bulk email complete - Sent: ${results.length}, Failed: ${errors.length}`);
-    
-    if (errors.length > 0) {
-      logger.error("Failed recipients:", errors);
+      const mailOptions = {
+        from: `"McRoberts Scholars Bot" <${config.SMTP_USER}>`,
+        to: config.SMTP_USER, // send to self; all real recipients in BCC
+        bcc: emails.join(','),
+        subject,
+        text,
+        html: html || text,
+        timeout: 20000 // 20s per send
+      };
+
+      logger.info(`Sending single BCC email to ${emails.length} recipients`);
+      const result = await this.transporter.sendMail(mailOptions);
+
+      logger.info(`✅ Bulk BCC email sent. Message ID: ${result.messageId}`);
+      return { results: emails.map(e => ({ email: e, status: 'sent' })), errors: [] };
+    } catch (error) {
+      logger.error('❌ Bulk BCC email failed:', error.message);
+      if (error.code === 'ETIMEDOUT' || error.code === 'ESOCKETTIMEOUT') {
+        logger.error('Connection timeout - Render may block direct SMTP. Consider Mailgun/SendGrid.');
+      } else if (error.code === 'EAUTH') {
+        logger.error('Authentication failed - check SMTP_USER and App Password');
+      } else if (error.response) {
+        logger.error(`SMTP response: ${error.response}`);
+      }
+      const emails = recipients.map(r => (typeof r === 'string' ? r : r.email)).filter(Boolean);
+      return { results: [], errors: emails.map(e => ({ email: e, error: error.message })) };
     }
-    
-    return { results, errors };
+  }
+
+  async sendTestEmail(to, subject, text, html = null) {
+    const target = to || config.SMTP_USER;
+    logger.info(`Sending test email to ${target}`);
+    return this.sendEmail(target, subject, text, html);
   }
 
   // Test connection method that won't crash the app
