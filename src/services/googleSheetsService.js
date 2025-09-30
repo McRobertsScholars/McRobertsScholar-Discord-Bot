@@ -147,57 +147,37 @@ class GoogleSheetsService {
 
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId: spreadsheetId,
-        range: `${mostRecentSheet}!A:Z`,
-      })
+        range: `${mostRecentSheet}!B:B`, // Only fetch data from column B
+      });
 
-      const rows = response.data.values
+      const rows = response.data.values;
       if (!rows || rows.length === 0) {
-        throw new Error(`No data found in sheet "${mostRecentSheet}". Please add member data to the spreadsheet.`)
+        throw new Error(`No data found in sheet "${mostRecentSheet}". Please add member data to the spreadsheet.`);
       }
 
       if (rows.length === 1) {
-        throw new Error(`Only headers found in sheet "${mostRecentSheet}". Please add member data below the headers.`)
+        throw new Error(`Only headers found in sheet "${mostRecentSheet}". Please add member data below the headers.`);
       }
 
-      const headers = rows[0].map((header) => header.toLowerCase())
-      logger.info(`Headers found: ${headers.join(", ")}`)
-
-      const emailColumnIndex = headers.findIndex(
-        (header) => header.includes("email") || header.includes("e-mail") || header.includes("mail"),
-      )
-      const nameColumnIndex = headers.findIndex(
-        (header) =>
-          header.includes("name") ||
-          header.includes("first") ||
-          header.includes("student") ||
-          header.includes("member"),
-      )
-
-      if (emailColumnIndex === -1) {
-        throw new Error(
-          `Email column not found. Available columns: ${headers.join(", ")}\nPlease ensure there's a column with "email" in the name.`,
-        )
-      }
-
-      const members = []
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i]
-        const email = row[emailColumnIndex]
-        const name = nameColumnIndex !== -1 ? row[nameColumnIndex] : `Member ${i}`
-
+      // No need to dynamically find the email column if we're always reading column B
+      const members = [];
+      for (let i = 0; i < rows.length; i++) { // Start from 0 as we're reading only emails
+        const row = rows[i];
+        const email = row[0]; // Email is the first (and only) element in the row
+        
         if (email && email.includes("@")) {
-          members.push({ name: name || "Unknown", email: email.trim() })
+          members.push({ name: `Member ${i + 1}`, email: email.trim() }); // Generic name, as we don't have name column
         }
       }
 
       if (members.length === 0) {
         throw new Error(
           `No valid email addresses found in sheet "${mostRecentSheet}". Please check that the email column contains valid email addresses.`,
-        )
+        );
       }
 
-      logger.info(`Found ${members.length} members with valid emails from sheet "${mostRecentSheet}"`)
-      return { members, sheetName: mostRecentSheet }
+      logger.info(`Found ${members.length} members with valid emails from sheet "${mostRecentSheet}"`);
+      return { members, sheetName: mostRecentSheet };
     } catch (error) {
       logger.error("Error fetching member emails:", error.message)
       throw error
