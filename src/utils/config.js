@@ -41,6 +41,6 @@ module.exports = {
   SMTP_PASS: cleanEnvVar(process.env.SMTP_PASS || process.env.EMAIL_PASSWORD), // Support both var names
   
   // Optional: Add SMTP security settings for more control
-  SMTP_SECURE: cleanEnvVar(process.env.SMTP_SECURE) === 'true' || false, // true for 465, false for other ports
+  SMTP_SECURE: cleanEnvVar(process.env.SMTP_SECURE) === 'false' || false, // true for 465, false for other ports
   SMTP_REJECT_UNAUTHORIZED: cleanEnvVar(process.env.SMTP_REJECT_UNAUTHORIZED) !== 'false' // Default to true for security
 };
