@@ -37,6 +37,7 @@ class EmailService {
       host: config.SMTP_HOST,
       port: config.SMTP_PORT,
       secure: false, // Use STARTTLS
+      requireTLS: true, // Explicitly require STARTTLS
       auth: {
         user: config.SMTP_USER,
         pass: config.SMTP_PASS,
@@ -46,8 +47,8 @@ class EmailService {
         rejectUnauthorized: false
       },
       // Add connection timeout
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
+      connectionTimeout: 30000, // 30 seconds
+      greetingTimeout: 30000, // 30 seconds
     });
 
     // Verify the connection configuration
