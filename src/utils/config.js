@@ -20,13 +20,13 @@ module.exports = {
   GOOGLE_PRIVATE_KEY: process.env.GOOGLE_PRIVATE_KEY?.replace(/\n/g, "\n"), // Handle newlines in private key
   GOOGLE_SPREADSHEET_ID: "1LiT3cGeypX80UHLbL6WMdCoVP3yZMpzizarDB_diVaw",
 
-  GMAIL_CLIENT_ID: process.env.GMAIL_CLIENT_ID,
-  GMAIL_CLIENT_SECRET: process.env.GMAIL_CLIENT_SECRET,
-  GMAIL_REFRESH_TOKEN: process.env.GMAIL_REFRESH_TOKEN,
-  GMAIL_FROM_EMAIL: process.env.GMAIL_FROM_EMAIL,
+  // GMAIL_CLIENT_ID: process.env.GMAIL_CLIENT_ID,
+  // GMAIL_CLIENT_SECRET: process.env.GMAIL_CLIENT_SECRET,
+  // GMAIL_REFRESH_TOKEN: process.env.GMAIL_REFRESH_TOKEN,
+  // GMAIL_FROM_EMAIL: process.env.GMAIL_FROM_EMAIL,
 
-  SMTP_HOST: process.env.SMTP_HOST,
-  SMTP_PORT: process.env.SMTP_PORT || 587,
-  SMTP_USER: process.env.SMTP_USER,
-  SMTP_PASS: process.env.SMTP_PASS,
+  SMTP_HOST: 'smtp.gmail.com', // Explicitly set for Gmail SMTP
+  SMTP_PORT: 587, // Standard port for TLS
+  SMTP_USER: process.env.EMAIL_FROM, // Use the new EMAIL_FROM variable
+  SMTP_PASS: process.env.EMAIL_PASSWORD, // Use the new EMAIL_PASSWORD variable
 }
