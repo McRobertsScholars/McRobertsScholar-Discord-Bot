@@ -166,18 +166,15 @@ class GoogleSheetsService {
         throw new Error(`No data found in sheet "${targetSheetName}". Please add member data to the spreadsheet.`);
       }
 
-      if (rows.length === 1) {
-        throw new Error(`Only headers found in sheet "${targetSheetName}". Please add member data below the headers.`);
-      }
-
-      // No need to dynamically find the email column if we're always reading column B
+      // No need to explicitly check for rows.length === 1 as we're now robustly handling each row.
+      // Assuming no headers, emails start from row 0.
       const members = [];
-      for (let i = 0; i < rows.length; i++) { // Start from 0 as we're reading only emails
+      for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
-        const email = row[0]; // Email is the first (and only) element in the row
+        const email = row && row[0] ? String(row[0]).trim() : ''; // Ensure row[0] exists and is a string
         
         if (email && email.includes("@")) {
-          members.push({ name: `Member ${i + 1}`, email: email.trim() }); // Generic name, as we don't have name column
+          members.push({ name: `Member ${i + 1}`, email }); // Generic name, as we don't have name column
         }
       }
 
