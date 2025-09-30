@@ -1,5 +1,4 @@
 const nodemailer = require("nodemailer")
-const { google } = require("googleapis")
 const config = require("../utils/config")
 const logger = require("../utils/logger")
 
@@ -12,19 +11,17 @@ class EmailService {
   async initializeTransporter() {
     try {
       logger.info("Attempting to initialize email service...");
-      logger.info(`GMAIL_CLIENT_ID status: ${config.GMAIL_CLIENT_ID ? 'set' : 'not set'}`);
-      logger.info(`GMAIL_CLIENT_SECRET status: ${config.GMAIL_CLIENT_SECRET ? 'set' : 'not set'}`);
-      logger.info(`GMAIL_REFRESH_TOKEN status: ${config.GMAIL_REFRESH_TOKEN ? 'set' : 'not set'}`);
-      logger.info(`GMAIL_FROM_EMAIL status: ${config.GMAIL_FROM_EMAIL ? 'set' : 'not set'}`);
+      // Only log SMTP related config now
+      logger.info(`SMTP_HOST status: ${config.SMTP_HOST ? 'set' : 'not set'}`);
+      logger.info(`SMTP_PORT status: ${config.SMTP_PORT ? 'set' : 'not set'}`);
+      logger.info(`SMTP_USER status: ${config.SMTP_USER ? 'set' : 'not set'}`);
+      logger.info(`SMTP_PASS status: ${config.SMTP_PASS ? 'set' : 'not set'}`);
 
-      if (config.GMAIL_CLIENT_ID && config.GMAIL_CLIENT_SECRET && config.GMAIL_REFRESH_TOKEN) {
-        // Use Gmail API
-        await this.setupGmailAPI();
-      } else if (config.SMTP_HOST && config.SMTP_USER && config.SMTP_PASS) {
+      if (config.SMTP_HOST && config.SMTP_USER && config.SMTP_PASS) {
         // Use SMTP
         this.setupSMTP();
       } else {
-        throw new Error("No email configuration found (missing GMAIL or SMTP credentials)");
+        throw new Error("No email configuration found (missing SMTP credentials)");
       }
 
       logger.info("Email service initialized successfully");
@@ -34,46 +31,11 @@ class EmailService {
     }
   }
 
-  async setupGmailAPI() {
-    const oauth2Client = new google.auth.OAuth2(
-      config.GMAIL_CLIENT_ID,
-      config.GMAIL_CLIENT_SECRET,
-      "https://developers.google.com/oauthplayground",
-    )
-
-    oauth2Client.setCredentials({
-      refresh_token: config.GMAIL_REFRESH_TOKEN,
-    });
-
-    let accessToken;
-    try {
-      const tokenResponse = await oauth2Client.getAccessToken();
-      accessToken = tokenResponse.token;
-      logger.info(`Access token obtained successfully: ${!!accessToken}`);
-      logger.info(`GMAIL_FROM_EMAIL being used: ${config.GMAIL_FROM_EMAIL}`);
-    } catch (tokenError) {
-      logger.error("Error getting access token with refresh token:", tokenError);
-      throw tokenError; // Re-throw to propagate the error and prevent transporter initialization
-    }
-
-    this.transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        type: "OAuth2",
-        user: config.GMAIL_FROM_EMAIL,
-        clientId: config.GMAIL_CLIENT_ID,
-        clientSecret: config.GMAIL_CLIENT_SECRET,
-        refreshToken: config.GMAIL_REFRESH_TOKEN,
-        accessToken: accessToken,
-      },
-    });
-  }
-
   setupSMTP() {
     this.transporter = nodemailer.createTransport({
       host: config.SMTP_HOST,
       port: config.SMTP_PORT,
-      secure: false,
+      secure: false, // TLS is used, but not SSL/implicit TLS
       auth: {
         user: config.SMTP_USER,
         pass: config.SMTP_PASS,
@@ -88,7 +50,7 @@ class EmailService {
       }
 
       const mailOptions = {
-        from: config.GMAIL_FROM_EMAIL || config.SMTP_USER,
+        from: `"McRoberts Scholars Bot" <${config.SMTP_USER}>`, // Use a friendly name with the SMTP user
         to,
         subject,
         text,
