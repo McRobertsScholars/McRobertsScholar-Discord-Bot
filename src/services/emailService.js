@@ -49,6 +49,8 @@ class EmailService {
     try {
       const tokenResponse = await oauth2Client.getAccessToken();
       accessToken = tokenResponse.token;
+      logger.info(`Access token obtained successfully: ${!!accessToken}`);
+      logger.info(`GMAIL_FROM_EMAIL being used: ${config.GMAIL_FROM_EMAIL}`);
     } catch (tokenError) {
       logger.error("Error getting access token with refresh token:", tokenError);
       throw tokenError; // Re-throw to propagate the error and prevent transporter initialization
@@ -91,10 +93,12 @@ class EmailService {
         subject,
         text,
         html: html || text,
-      }
+        // Add a timeout to detect hanging send operations
+        timeout: 10000, // 10 seconds
+      };
 
-      const result = await this.transporter.sendMail(mailOptions)
-      logger.info(`Email sent successfully to ${to}`)
+      const result = await this.transporter.sendMail(mailOptions);
+      logger.info(`Email sent successfully to ${to}`);
       return result
     } catch (error) {
       logger.error(`Failed to send email to ${to}:`, error);
