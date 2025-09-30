@@ -11,19 +11,26 @@ class EmailService {
 
   async initializeTransporter() {
     try {
+      logger.info("Attempting to initialize email service...");
+      logger.info(`GMAIL_CLIENT_ID status: ${config.GMAIL_CLIENT_ID ? 'set' : 'not set'}`);
+      logger.info(`GMAIL_CLIENT_SECRET status: ${config.GMAIL_CLIENT_SECRET ? 'set' : 'not set'}`);
+      logger.info(`GMAIL_REFRESH_TOKEN status: ${config.GMAIL_REFRESH_TOKEN ? 'set' : 'not set'}`);
+      logger.info(`GMAIL_FROM_EMAIL status: ${config.GMAIL_FROM_EMAIL ? 'set' : 'not set'}`);
+
       if (config.GMAIL_CLIENT_ID && config.GMAIL_CLIENT_SECRET && config.GMAIL_REFRESH_TOKEN) {
         // Use Gmail API
-        await this.setupGmailAPI()
+        await this.setupGmailAPI();
       } else if (config.SMTP_HOST && config.SMTP_USER && config.SMTP_PASS) {
         // Use SMTP
-        this.setupSMTP()
+        this.setupSMTP();
       } else {
-        throw new Error("No email configuration found")
+        throw new Error("No email configuration found (missing GMAIL or SMTP credentials)");
       }
 
-      logger.info("Email service initialized successfully")
+      logger.info("Email service initialized successfully");
     } catch (error) {
-      logger.error("Failed to initialize email service:", error)
+      logger.error("Failed to initialize email service:", error);
+      throw error; // Rethrow to ensure it's visible in main bot logs
     }
   }
 
