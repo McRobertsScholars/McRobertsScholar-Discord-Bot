@@ -40,22 +40,38 @@ class EmailService {
   setupSMTP() {
     logger.info(`Setting up SMTP transporter for ${config.SMTP_USER}`);
     
-    // Configure from environment with safe defaults
+    const isGmail = (config.SMTP_HOST || '').includes('gmail.com') || !config.SMTP_HOST;
+    const baseOptions = isGmail
+      ? {
+          service: 'gmail',
+          auth: {
+            user: config.SMTP_USER,
+            pass: config.SMTP_PASS,
+          },
+        }
+      : {
+          host: config.SMTP_HOST,
+          port: config.SMTP_PORT || 587,
+          secure: !!config.SMTP_SECURE, // true for 465, false for STARTTLS
+          auth: {
+            user: config.SMTP_USER,
+            pass: config.SMTP_PASS,
+          },
+        };
+
     this.transporter = nodemailer.createTransport({
-      host: config.SMTP_HOST || 'smtp.gmail.com',
-      port: config.SMTP_PORT || 587,
-      secure: !!config.SMTP_SECURE, // true for 465, false for STARTTLS
-      auth: {
-        user: config.SMTP_USER,
-        pass: config.SMTP_PASS,
-      },
+      ...baseOptions,
+      requireTLS: true,
       tls: {
-        // Allow overriding cert validation in constrained environments like Render
         rejectUnauthorized: config.SMTP_REJECT_UNAUTHORIZED !== false
       },
       pool: true,
       maxConnections: 3,
-      maxMessages: 100
+      maxMessages: 100,
+      // Critical: prevent 2-minute hangs on Render by setting timeouts at transport level
+      connectionTimeout: 15000, // 15s to establish TCP/TLS
+      greetingTimeout: 10000,   // 10s to get server greeting
+      socketTimeout: 15000      // 15s for inactivity on socket
     });
 
     // DON'T verify here - it causes timeouts on OnRender
@@ -130,7 +146,8 @@ class EmailService {
         subject,
         text,
         html: html || text,
-        timeout: 20000 // 20s per send
+        // Additional per-send timeouts to avoid long hangs
+        timeout: 15000
       };
 
       logger.info(`Sending single BCC email to ${emails.length} recipients`);
