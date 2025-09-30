@@ -36,9 +36,16 @@ class EmailService {
 
     oauth2Client.setCredentials({
       refresh_token: config.GMAIL_REFRESH_TOKEN,
-    })
+    });
 
-    const accessToken = await oauth2Client.getAccessToken()
+    let accessToken;
+    try {
+      const tokenResponse = await oauth2Client.getAccessToken();
+      accessToken = tokenResponse.token;
+    } catch (tokenError) {
+      logger.error("Error getting access token with refresh token:", tokenError);
+      throw tokenError; // Re-throw to propagate the error and prevent transporter initialization
+    }
 
     this.transporter = nodemailer.createTransporter({
       service: "gmail",
@@ -48,7 +55,7 @@ class EmailService {
         clientId: config.GMAIL_CLIENT_ID,
         clientSecret: config.GMAIL_CLIENT_SECRET,
         refreshToken: config.GMAIL_REFRESH_TOKEN,
-        accessToken: accessToken.token,
+        accessToken: accessToken,
       },
     })
   }
