@@ -6,8 +6,8 @@ class EmailService {
   constructor() {
     this.transporter = null;
     this.isInitialized = false;
-    // Don't await initialization - let it happen in background
-    this.initializeTransporter();
+    console.log("📧 EmailService instance created.");
+    // ❌ remove this.initializeTransporter();  <-- don't connect on startup
   }
 
   async initializeTransporter() {
@@ -84,27 +84,25 @@ class EmailService {
         logger.error("Email transporter not initialized properly");
         throw new Error("Email service not available");
       }
-
+  
       const mailOptions = {
         from: `"McRoberts Scholars Bot" <${config.SMTP_USER}>`,
         to,
         subject,
         text,
         html: html || text,
-        // Add timeout for individual send operations
-        timeout: 15000, // 15 seconds like your working test
+        timeout: 15000, // 15s timeout
       };
-
+  
       logger.info(`Attempting to send email to ${to}...`);
-      
+  
       const result = await this.transporter.sendMail(mailOptions);
       logger.info(`✅ Email sent successfully to ${to} - Message ID: ${result.messageId}`);
       return result;
-      
+  
     } catch (error) {
       logger.error(`❌ Failed to send email to ${to}:`, error.message);
-      
-      // More detailed error logging
+  
       if (error.code === 'ETIMEDOUT' || error.code === 'ESOCKETTIMEOUT') {
         logger.error('Connection timeout - OnRender may be blocking SMTP. Consider using an email API service.');
       } else if (error.code === 'EAUTH') {
@@ -113,10 +111,11 @@ class EmailService {
       } else if (error.code === 'ECONNREFUSED') {
         logger.error('Connection refused - SMTP port may be blocked');
       }
-      
+  
       throw error;
     }
   }
+  
 
   async sendBulkEmail(recipients, subject, text, html = null) {
     if (!this.isInitialized) {
