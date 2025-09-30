@@ -31,31 +31,39 @@ for (const file of commandFiles) {
 
 // Interaction handler for slash commands
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand()) return
+  // Handle slash commands
+  if (interaction.isChatInputCommand()) {
+    const command = client.commands.get(interaction.commandName);
+    if (!command) return;
 
-  const command = client.commands.get(interaction.commandName)
-
-  if (!command) {
-    logger.error(`No command matching ${interaction.commandName} was found.`)
-    return
+    try {
+      await command.execute(interaction, client);
+    } catch (error) {
+      console.error(error);
+      await interaction.reply({
+        content: "There was an error executing this command!",
+        ephemeral: true
+      });
+    }
   }
 
-  try {
-    // Remove the duplicate deferReply check since commands should handle their own replies
-    await command.execute(interaction)
-  } catch (error) {
-    logger.error(`Error executing ${interaction.commandName} command: ${error.message}`)
+  // Handle button interactions
+  if (interaction.isButton()) {
+    if (interaction.customId.startsWith("announce_")) {
+      const announceCommand = client.commands.get("announce");
+      if (announceCommand && announceCommand.handleButton) {
+        await announceCommand.handleButton(interaction, client);
+      }
+    }
+  }
 
-    // Only reply if we haven't replied to this interaction yet
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction
-        .reply({
-          content: "There was an error while executing this command!",
-          ephemeral: true,
-        })
-        .catch((err) => {
-          logger.error(`Failed to send error message: ${err.message}`)
-        })
+  // Handle modal submissions
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId.startsWith("announce_modal_")) {
+      const announceCommand = client.commands.get("announce");
+      if (announceCommand && announceCommand.handleModal) {
+        await announceCommand.handleModal(interaction, client);
+      }
     }
   }
 })
