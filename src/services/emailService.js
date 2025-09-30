@@ -6,205 +6,105 @@ class EmailService {
   constructor() {
     this.transporter = null;
     this.isInitialized = false;
-    console.log("📧 EmailService instance created.");
-    // ❌ remove this.initializeTransporter();  <-- don't connect on startup
   }
 
   async initializeTransporter() {
     try {
-      logger.info("Initializing email service...");
-      
-      // Debug logging to verify cleaned values
-      logger.info(`SMTP_HOST: ${config.SMTP_HOST}`);
-      logger.info(`SMTP_PORT: ${config.SMTP_PORT}`);
-      logger.info(`SMTP_USER: ${config.SMTP_USER}`);
-      logger.info(`SMTP_PASS: ${config.SMTP_PASS ? '********' : 'not set'}`);
+      logger.info("📧 Initializing EmailService...");
 
-      if (!config.SMTP_HOST || !config.SMTP_USER || !config.SMTP_PASS) {
-        logger.error(`Missing SMTP credentials - HOST: ${!!config.SMTP_HOST}, USER: ${!!config.SMTP_USER}, PASS: ${!!config.SMTP_PASS}`);
-        this.isInitialized = false;
-        return; // Don't throw - just log and return
+      if (!config.SMTP_USER || !config.SMTP_PASS) {
+        logger.error("❌ SMTP_USER or SMTP_PASS not set. Emails cannot be sent.");
+        return;
       }
 
-      // Setup SMTP WITHOUT verification (which causes timeouts on OnRender)
-      this.setupSMTP();
+      const baseOptions = config.SMTP_HOST.includes("gmail.com")
+        ? { service: 'gmail', auth: { user: config.SMTP_USER, pass: config.SMTP_PASS } }
+        : { host: config.SMTP_HOST, port: config.SMTP_PORT, secure: config.SMTP_SECURE, auth: { user: config.SMTP_USER, pass: config.SMTP_PASS } };
+
+      this.transporter = nodemailer.createTransport({
+        ...baseOptions,
+        requireTLS: true,
+        tls: { rejectUnauthorized: config.SMTP_REJECT_UNAUTHORIZED },
+        pool: true,
+        maxConnections: 3,
+        maxMessages: 100,
+        connectionTimeout: 15000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000
+      });
+
       this.isInitialized = true;
-      logger.info("Email service setup complete (verification skipped for OnRender compatibility)");
-    } catch (error) {
-      logger.error("Failed to initialize email service:", error);
+      logger.info("✅ EmailService initialized successfully.");
+    } catch (err) {
+      logger.error("❌ Failed to initialize EmailService:", err);
       this.isInitialized = false;
-      // Don't throw - let the app continue running
     }
   }
 
-  setupSMTP() {
-    logger.info(`Setting up SMTP transporter for ${config.SMTP_USER}`);
-    
-    const isGmail = (config.SMTP_HOST || '').includes('gmail.com') || !config.SMTP_HOST;
-    const baseOptions = isGmail
-      ? {
-          service: 'gmail',
-          auth: {
-            user: config.SMTP_USER,
-            pass: config.SMTP_PASS,
-          },
-        }
-      : {
-          host: config.SMTP_HOST,
-          port: config.SMTP_PORT || 587,
-          secure: !!config.SMTP_SECURE, // true for 465, false for STARTTLS
-          auth: {
-            user: config.SMTP_USER,
-            pass: config.SMTP_PASS,
-          },
-        };
-
-    this.transporter = nodemailer.createTransport({
-      ...baseOptions,
-      requireTLS: true,
-      tls: {
-        rejectUnauthorized: config.SMTP_REJECT_UNAUTHORIZED !== false
-      },
-      pool: true,
-      maxConnections: 3,
-      maxMessages: 100,
-      // Critical: prevent 2-minute hangs on Render by setting timeouts at transport level
-      connectionTimeout: 15000, // 15s to establish TCP/TLS
-      greetingTimeout: 10000,   // 10s to get server greeting
-      socketTimeout: 15000      // 15s for inactivity on socket
-    });
-
-    // DON'T verify here - it causes timeouts on OnRender
-    // Verification will happen on first email send
-  }
-
   async sendEmail(to, subject, text, html = null) {
+    if (!this.isInitialized || !this.transporter) throw new Error("Email transporter not initialized");
+
     try {
-      if (!this.transporter || !this.isInitialized) {
-        logger.error("Email transporter not initialized properly");
-        throw new Error("Email service not available");
-      }
-  
       const mailOptions = {
         from: `"McRoberts Scholars Bot" <${config.SMTP_USER}>`,
         to,
         subject,
         text,
         html: html || text,
-        timeout: 15000, // 15s timeout
-      };
-  
-      logger.info(`Attempting to send email to ${to}...`);
-  
-      const result = await this.transporter.sendMail(mailOptions);
-      logger.info(`✅ Email sent successfully to ${to} - Message ID: ${result.messageId}`);
-      return result;
-  
-    } catch (error) {
-      logger.error(`❌ Failed to send email to ${to}:`, error.message);
-  
-      if (error.code === 'ETIMEDOUT' || error.code === 'ESOCKETTIMEOUT') {
-        logger.error('Connection timeout - OnRender may be blocking SMTP. Consider using an email API service.');
-      } else if (error.code === 'EAUTH') {
-        logger.error('Authentication failed - App Password may be incorrect or revoked');
-        logger.error(`Current user: ${config.SMTP_USER}`);
-      } else if (error.code === 'ECONNREFUSED') {
-        logger.error('Connection refused - SMTP port may be blocked');
-      }
-  
-      throw error;
-    }
-  }
-  
-
-  async sendBulkEmail(recipients, subject, text, html = null) {
-    if (!this.isInitialized) {
-      logger.error("Email service not initialized - bulk email aborted");
-      return { 
-        results: [], 
-        errors: recipients.map(r => ({ 
-          email: r.email, 
-          error: "Email service not available" 
-        })) 
-      };
-    }
-
-    try {
-      const emails = recipients
-        .map(r => (typeof r === 'string' ? r : r.email))
-        .filter(Boolean);
-
-      if (emails.length === 0) {
-        throw new Error('No valid recipient emails provided');
-      }
-
-      const mailOptions = {
-        from: `"McRoberts Scholars Bot" <${config.SMTP_USER}>`,
-        to: config.SMTP_USER, // send to self; all real recipients in BCC
-        bcc: emails.join(','),
-        subject,
-        text,
-        html: html || text,
-        // Additional per-send timeouts to avoid long hangs
         timeout: 15000
       };
 
-      logger.info(`Sending single BCC email to ${emails.length} recipients`);
       const result = await this.transporter.sendMail(mailOptions);
-
-      logger.info(`✅ Bulk BCC email sent. Message ID: ${result.messageId}`);
-      return { results: emails.map(e => ({ email: e, status: 'sent' })), errors: [] };
-    } catch (error) {
-      logger.error('❌ Bulk BCC email failed:', error.message);
-      if (error.code === 'ETIMEDOUT' || error.code === 'ESOCKETTIMEOUT') {
-        logger.error('Connection timeout - Render may block direct SMTP. Consider Mailgun/SendGrid.');
-      } else if (error.code === 'EAUTH') {
-        logger.error('Authentication failed - check SMTP_USER and App Password');
-      } else if (error.response) {
-        logger.error(`SMTP response: ${error.response}`);
-      }
-      const emails = recipients.map(r => (typeof r === 'string' ? r : r.email)).filter(Boolean);
-      return { results: [], errors: emails.map(e => ({ email: e, error: error.message })) };
+      logger.info(`✅ Email sent to ${to} (Message ID: ${result.messageId})`);
+      return result;
+    } catch (err) {
+      logger.error(`❌ Failed to send email to ${to}:`, err.message);
+      throw err;
     }
   }
 
-  async sendTestEmail(to, subject, text, html = null) {
-    const target = to || config.SMTP_USER;
-    logger.info(`Sending test email to ${target}`);
-    return this.sendEmail(target, subject, text, html);
-  }
+  async sendBulkEmail(recipients, subject, text, html = null) {
+    if (!this.isInitialized) throw new Error("Email transporter not initialized");
 
-  // Test connection method that won't crash the app
-  async testConnection() {
-    if (!this.isInitialized) {
-      logger.error("Email service not initialized");
-      return false;
-    }
+    const emails = recipients.map(r => (typeof r === "string" ? r : r.email)).filter(Boolean);
+    if (!emails.length) throw new Error("No valid recipients provided");
 
     try {
-      // Try sending a test email to yourself instead of verify()
-      await this.sendEmail(
-        config.SMTP_USER, // Send to self
-        'Email Service Test',
-        'This is an automated test to verify email service is working.',
-        '<p>This is an automated test to verify email service is working.</p>'
-      );
-      logger.info("✅ Email service test successful!");
-      return true;
-    } catch (error) {
-      logger.error("❌ Email service test failed:", error.message);
-      return false;
+      const result = await this.transporter.sendMail({
+        from: `"McRoberts Scholars Bot" <${config.SMTP_USER}>`,
+        to: config.SMTP_USER,
+        bcc: emails.join(","),
+        subject,
+        text,
+        html: html || text,
+        timeout: 15000
+      });
+      logger.info(`✅ Bulk email sent to ${emails.length} recipients (Message ID: ${result.messageId})`);
+      return { results: emails.map(e => ({ email: e, status: 'sent' })), errors: [] };
+    } catch (err) {
+      logger.error(`❌ Bulk email failed: ${err.message}`);
+      return { results: [], errors: emails.map(e => ({ email: e, error: err.message })) };
     }
   }
 
-  // Get service status without crashing
+  async sendTestEmail(to = "tadjellcraft@gmail.com") {
+    return this.sendEmail(
+      to,
+      "Test Email",
+      "This is a test email from EmailService."
+    );
+  }
+
   getStatus() {
     return {
       initialized: this.isInitialized,
-      hasTransporter: !!this.transporter,
-      smtpUser: config.SMTP_USER || 'Not configured'
+      smtpUser: config.SMTP_USER || "Not set"
     };
   }
 }
 
-module.exports = new EmailService();
+// auto-initialize
+const emailService = new EmailService();
+emailService.initializeTransporter().catch(console.error);
+
+module.exports = emailService;
