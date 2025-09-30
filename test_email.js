@@ -2,9 +2,9 @@ const nodemailer = require('nodemailer');
 require('dotenv').config({ path: './local.env' }); // Explicitly load from local.env
 
 async function sendTestEmail() {
-    const testUser = process.env.EMAIL_FROM;
-    const testPass = process.env.EMAIL_PASSWORD;
-    const recipient = 'your-personal-email@example.com'; // **Change this to a personal email address you can check**
+    const testUser = process.env.EMAIL_FROM ? process.env.EMAIL_FROM.replace(/"/g, '').trim() : undefined;
+    const testPass = process.env.EMAIL_PASSWORD ? process.env.EMAIL_PASSWORD.replace(/"/g, '') : undefined;
+    const recipient = 'tadjellcraft@gmail.com'; // **Change this to a personal email address you can check**
 
     if (!testUser || !testPass) {
         console.error('ERROR: EMAIL_FROM or EMAIL_PASSWORD not set in environment.');
