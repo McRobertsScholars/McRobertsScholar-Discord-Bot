@@ -54,7 +54,7 @@ class EmailService {
       throw tokenError; // Re-throw to propagate the error and prevent transporter initialization
     }
 
-    this.transporter = nodemailer.createTransporter({
+    this.transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
         type: "OAuth2",
@@ -64,11 +64,11 @@ class EmailService {
         refreshToken: config.GMAIL_REFRESH_TOKEN,
         accessToken: accessToken,
       },
-    })
+    });
   }
 
   setupSMTP() {
-    this.transporter = nodemailer.createTransporter({
+    this.transporter = nodemailer.createTransport({
       host: config.SMTP_HOST,
       port: config.SMTP_PORT,
       secure: false,
@@ -76,7 +76,7 @@ class EmailService {
         user: config.SMTP_USER,
         pass: config.SMTP_PASS,
       },
-    })
+    });
   }
 
   async sendEmail(to, subject, text, html = null) {
