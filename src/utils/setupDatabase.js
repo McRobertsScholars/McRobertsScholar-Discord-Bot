@@ -4,7 +4,7 @@ const logger = require("./logger.js")
 
 async function setupDatabase() {
   try {
-    const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_KEY)
+    const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY);
 
     // Create links table
     const { error: createError } = await supabase.rpc("create_links_table")

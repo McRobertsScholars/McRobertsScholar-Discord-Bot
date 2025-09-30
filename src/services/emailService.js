@@ -97,8 +97,8 @@ class EmailService {
       logger.info(`Email sent successfully to ${to}`)
       return result
     } catch (error) {
-      logger.error(`Failed to send email to ${to}:`, error)
-      throw error
+      logger.error(`Failed to send email to ${to}:`, error);
+      throw error;
     }
   }
 
