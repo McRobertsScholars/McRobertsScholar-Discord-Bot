@@ -27,7 +27,7 @@ module.exports = {
 
   SMTP_HOST: 'smtp.gmail.com', // Explicitly set for Gmail SMTP
   SMTP_PORT: 587, // Standard port for TLS
-  // Sanitize environment variables to remove potential quotes or extra whitespace
-  SMTP_USER: process.env.EMAIL_FROM ? process.env.EMAIL_FROM.replace(/"/g, '').trim() : undefined, // Use the new EMAIL_FROM variable
-  SMTP_PASS: process.env.EMAIL_PASSWORD ? process.env.EMAIL_PASSWORD.replace(/"/g, '').trim() : undefined, // Use the new EMAIL_PASSWORD variable
+  // Sanitize environment variables to remove potential quotes
+  SMTP_USER: process.env.EMAIL_FROM ? process.env.EMAIL_FROM.replace(/"/g, '').trim() : undefined, // Use the new EMAIL_FROM variable, trim whitespace
+  SMTP_PASS: process.env.EMAIL_PASSWORD ? process.env.EMAIL_PASSWORD.replace(/"/g, '') : undefined, // Use the new EMAIL_PASSWORD variable, but DO NOT trim whitespace (App Passwords can have spaces)
 }

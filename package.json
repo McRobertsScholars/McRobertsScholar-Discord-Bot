@@ -2,7 +2,6 @@
   "name": "discord-scholarship-bot",
   "version": "1.0.0",
   "main": "src/index.js",
-
   "scripts": {
     "start": "node src/index.js"
   },
@@ -14,12 +13,12 @@
     "cheerio": "^1.0.0",
     "discord-api-types": "^0.37.119",
     "discord.js": "^14.18.0",
-    "dotenv": "^16.4.7",
+    "dotenv": "^16.6.1",
     "express": "^4.21.2",
     "googleapis": "^159.0.0",
     "node-cron": "^4.2.1",
     "node-fetch": "^3.3.2",
-    "nodemailer": "^7.0.5",
+    "nodemailer": "^7.0.6",
     "winston": "^3.17.0"
   }
 }
