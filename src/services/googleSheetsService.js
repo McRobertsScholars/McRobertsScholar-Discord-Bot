@@ -122,41 +122,52 @@ class GoogleSheetsService {
         }
       }
 
-      const sheetNames = spreadsheet.data.sheets.map((sheet) => sheet.properties.title)
-      logger.info(`Available sheets: ${sheetNames.join(", ")}`)
+      const sheetNames = spreadsheet.data.sheets.map((sheet) => sheet.properties.title);
+      logger.info(`Available sheets: ${sheetNames.join(", ")}`);
 
-      const yearSheets = sheetNames.filter((name) => {
-        return /\d{4}[/\-_]\d{4}|\d{4}/.test(name)
-      })
+      let targetSheetName;
 
-      if (yearSheets.length === 0) {
-        throw new Error(
-          `No year-based sheets found. Available sheets: ${sheetNames.join(", ")}\nPlease create a sheet with a year in the name (e.g., "2026/2027" or "2026-2027")`,
-        )
+      // If a specific spreadsheet ID is provided, use the first sheet found
+      if (config.GOOGLE_SPREADSHEET_ID) {
+        if (sheetNames.length === 0) {
+          throw new Error(`No sheets found in the configured spreadsheet. Please ensure the spreadsheet is not empty.`);
+        }
+        targetSheetName = sheetNames[0]; // Use the first sheet
+        logger.info(`Using the first sheet found: ${targetSheetName} based on configured GOOGLE_SPREADSHEET_ID`);
+      } else { // Fallback to year-based sheets if no specific ID is configured (auto-discovery)
+        const yearSheets = sheetNames.filter((name) => {
+          return /\d{4}[/\-_]\d{4}|\d{4}/.test(name);
+        });
+
+        if (yearSheets.length === 0) {
+          throw new Error(
+            `No year-based sheets found. Available sheets: ${sheetNames.join(", ")}\nPlease create a sheet with a year in the name (e.g., "2026/2027" or "2026-2027")`,
+          );
+        }
+
+        targetSheetName = yearSheets
+          .sort((a, b) => {
+            const yearA = Number.parseInt(a.match(/\d{4}/)[0]);
+            const yearB = Number.parseInt(b.match(/\d{4}/)[0]);
+            return yearA - yearB;
+          })
+          .pop();
+
+        logger.info(`Using most recent year-based sheet: ${targetSheetName}`);
       }
-
-      const mostRecentSheet = yearSheets
-        .sort((a, b) => {
-          const yearA = Number.parseInt(a.match(/\d{4}/)[0])
-          const yearB = Number.parseInt(b.match(/\d{4}/)[0])
-          return yearA - yearB
-        })
-        .pop()
-
-      logger.info(`Using most recent sheet: ${mostRecentSheet}`)
 
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId: spreadsheetId,
-        range: `${mostRecentSheet}!B:B`, // Only fetch data from column B
+        range: `${targetSheetName}!B:B`, // Only fetch data from column B
       });
 
       const rows = response.data.values;
       if (!rows || rows.length === 0) {
-        throw new Error(`No data found in sheet "${mostRecentSheet}". Please add member data to the spreadsheet.`);
+        throw new Error(`No data found in sheet "${targetSheetName}". Please add member data to the spreadsheet.`);
       }
 
       if (rows.length === 1) {
-        throw new Error(`Only headers found in sheet "${mostRecentSheet}". Please add member data below the headers.`);
+        throw new Error(`Only headers found in sheet "${targetSheetName}". Please add member data below the headers.`);
       }
 
       // No need to dynamically find the email column if we're always reading column B
@@ -172,12 +183,12 @@ class GoogleSheetsService {
 
       if (members.length === 0) {
         throw new Error(
-          `No valid email addresses found in sheet "${mostRecentSheet}". Please check that the email column contains valid email addresses.`,
+          `No valid email addresses found in sheet "${targetSheetName}". Please check that the email column contains valid email addresses.`,
         );
       }
 
-      logger.info(`Found ${members.length} members with valid emails from sheet "${mostRecentSheet}"`);
-      return { members, sheetName: mostRecentSheet };
+      logger.info(`Found ${members.length} members with valid emails from sheet "${targetSheetName}"`);
+      return { members, sheetName: targetSheetName };
     } catch (error) {
       logger.error("Error fetching member emails:", error.message)
       throw error
