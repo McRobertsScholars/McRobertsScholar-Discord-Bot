@@ -16,7 +16,10 @@ module.exports = {
   MEETING_CHANNEL_ID: cleanEnvVar(process.env.MEETING_CHANNEL_ID),
   SUPABASE_URL: cleanEnvVar(process.env.SUPABASE_URL),
   SUPABASE_KEY: cleanEnvVar(process.env.SUPABASE_KEY),
-
+  GMAIL_CLIENT_ID: process.env.GMAIL_CLIENT_ID,
+  GMAIL_CLIENT_SECRET: process.env.GMAIL_CLIENT_SECRET,
+  GMAIL_REFRESH_TOKEN: process.env.GMAIL_REFRESH_TOKEN,
+  GMAIL_USER: process.env.GMAIL_USER,
   // Google Sheets
   GOOGLE_SHEETS_API_KEY: cleanEnvVar(process.env.GOOGLE_SHEETS_API_KEY),
   GOOGLE_CLIENT_EMAIL: cleanEnvVar(process.env.GOOGLE_CLIENT_EMAIL),
