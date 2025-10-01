@@ -1,62 +1,70 @@
-const nodemailer = require("nodemailer");
-const config = require("../utils/config");
+const { google } = require("googleapis");
 const logger = require("../utils/logger");
+const config = require("../utils/config");
 
 class EmailService {
   constructor() {
-    this.transporter = null;
+    this.gmail = null;
     this.isInitialized = false;
   }
 
-  async initializeTransporter() {
+  async initializeGmail() {
     try {
-      logger.info("📧 Initializing EmailService...");
+      logger.info("📧 Initializing Gmail API EmailService...");
 
-      if (!config.SMTP_USER || !config.SMTP_PASS) {
-        logger.error("❌ SMTP_USER or SMTP_PASS not set. Emails cannot be sent.");
+      if (!config.GMAIL_CLIENT_ID || !config.GMAIL_CLIENT_SECRET || !config.GMAIL_REFRESH_TOKEN || !config.GMAIL_USER) {
+        logger.error("❌ Gmail API credentials not set. Emails cannot be sent.");
         return;
       }
 
-      const baseOptions = config.SMTP_HOST.includes("gmail.com")
-        ? { service: 'gmail', auth: { user: config.SMTP_USER, pass: config.SMTP_PASS } }
-        : { host: config.SMTP_HOST, port: config.SMTP_PORT, secure: config.SMTP_SECURE, auth: { user: config.SMTP_USER, pass: config.SMTP_PASS } };
+      // Create OAuth2 client
+      const oAuth2Client = new google.auth.OAuth2(
+        config.GMAIL_CLIENT_ID,
+        config.GMAIL_CLIENT_SECRET,
+        "https://developers.google.com/oauthplayground" // redirect URI for refresh token use
+      );
 
-      this.transporter = nodemailer.createTransport({
-        ...baseOptions,
-        requireTLS: true,
-        tls: { rejectUnauthorized: config.SMTP_REJECT_UNAUTHORIZED },
-        pool: true,
-        maxConnections: 3,
-        maxMessages: 100,
-        connectionTimeout: 15000,
-        greetingTimeout: 10000,
-        socketTimeout: 15000
+      oAuth2Client.setCredentials({
+        refresh_token: config.GMAIL_REFRESH_TOKEN
       });
 
+      // Gmail API instance
+      this.gmail = google.gmail({ version: "v1", auth: oAuth2Client });
       this.isInitialized = true;
-      logger.info("✅ EmailService initialized successfully.");
+      logger.info("✅ Gmail API initialized successfully.");
     } catch (err) {
-      logger.error("❌ Failed to initialize EmailService:", err);
+      logger.error("❌ Failed to initialize Gmail API:", err);
       this.isInitialized = false;
     }
   }
 
   async sendEmail(to, subject, text, html = null) {
-    if (!this.isInitialized || !this.transporter) throw new Error("Email transporter not initialized");
+    if (!this.isInitialized || !this.gmail) throw new Error("Gmail API not initialized");
 
     try {
-      const mailOptions = {
-        from: `"McRoberts Scholars Bot" <${config.SMTP_USER}>`,
-        to,
-        subject,
-        text,
-        html: html || text,
-        timeout: 15000
-      };
+      const messageParts = [
+        `From: "McRoberts Scholars Bot" <${config.GMAIL_USER}>`,
+        `To: ${to}`,
+        `Subject: ${subject}`,
+        `MIME-Version: 1.0`,
+        `Content-Type: text/html; charset=UTF-8`,
+        ``,
+        html || text
+      ];
 
-      const result = await this.transporter.sendMail(mailOptions);
-      logger.info(`✅ Email sent to ${to} (Message ID: ${result.messageId})`);
-      return result;
+      const rawMessage = Buffer.from(messageParts.join("\n"))
+        .toString("base64")
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+
+      const res = await this.gmail.users.messages.send({
+        userId: "me",
+        requestBody: { raw: rawMessage }
+      });
+
+      logger.info(`✅ Email sent to ${to} (Message ID: ${res.data.id})`);
+      return res.data;
     } catch (err) {
       logger.error(`❌ Failed to send email to ${to}:`, err.message);
       throw err;
@@ -64,47 +72,40 @@ class EmailService {
   }
 
   async sendBulkEmail(recipients, subject, text, html = null) {
-    if (!this.isInitialized) throw new Error("Email transporter not initialized");
+    if (!this.isInitialized || !this.gmail) throw new Error("Gmail API not initialized");
 
-    const emails = recipients.map(r => (typeof r === "string" ? r : r.email)).filter(Boolean);
-    if (!emails.length) throw new Error("No valid recipients provided");
+    const results = [];
+    const errors = [];
 
-    try {
-      const result = await this.transporter.sendMail({
-        from: `"McRoberts Scholars Bot" <${config.SMTP_USER}>`,
-        to: config.SMTP_USER,
-        bcc: emails.join(","),
-        subject,
-        text,
-        html: html || text,
-        timeout: 15000
-      });
-      logger.info(`✅ Bulk email sent to ${emails.length} recipients (Message ID: ${result.messageId})`);
-      return { results: emails.map(e => ({ email: e, status: 'sent' })), errors: [] };
-    } catch (err) {
-      logger.error(`❌ Bulk email failed: ${err.message}`);
-      return { results: [], errors: emails.map(e => ({ email: e, error: err.message })) };
+    for (const r of recipients) {
+      const to = typeof r === "string" ? r : r.email;
+      if (!to) continue;
+      try {
+        const res = await this.sendEmail(to, subject, text, html);
+        results.push({ email: to, status: "sent", messageId: res.id });
+      } catch (err) {
+        errors.push({ email: to, error: err.message });
+      }
     }
+
+    logger.info(`✅ Bulk email process finished: ${results.length} sent, ${errors.length} failed`);
+    return { results, errors };
   }
 
-  async sendTestEmail(to = "tadjellcraft@gmail.com") {
-    return this.sendEmail(
-      to,
-      "Test Email",
-      "This is a test email from EmailService."
-    );
+  async sendTestEmail(to = config.GMAIL_USER) {
+    return this.sendEmail(to, "Test Email", "This is a test email from Gmail API EmailService.");
   }
 
   getStatus() {
     return {
       initialized: this.isInitialized,
-      smtpUser: config.SMTP_USER || "Not set"
+      gmailUser: config.GMAIL_USER || "Not set"
     };
   }
 }
 
-// auto-initialize
+// Auto-initialize
 const emailService = new EmailService();
-emailService.initializeTransporter().catch(console.error);
+emailService.initializeGmail().catch(console.error);
 
 module.exports = emailService;
