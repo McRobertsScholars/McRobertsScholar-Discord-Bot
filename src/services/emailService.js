@@ -3,6 +3,11 @@ const logger = require("../utils/logger");
 const config = require("../utils/config");
 
 class EmailService {
+  async waitForInit() {
+    while (!this.isInitialized) {
+        await new Promise(res => setTimeout(res, 100));
+    }
+}
   constructor() {
     this.gmail = null;
     this.isInitialized = false;
@@ -106,6 +111,7 @@ class EmailService {
 
 // Auto-initialize
 const emailService = new EmailService();
+
 emailService.initializeGmail().catch(console.error);
 
 module.exports = emailService;
