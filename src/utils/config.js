@@ -14,6 +14,8 @@ module.exports = {
   CHANNEL_ID: cleanEnvVar(process.env.CHANNEL_ID),
   SERVER_ID: cleanEnvVar(process.env.SERVER_ID || "1295906651332935743"),
   MEETING_CHANNEL_ID: cleanEnvVar(process.env.MEETING_CHANNEL_ID),
+  SUPABASE_URL: cleanEnvVar(process.env.SUPABASE_URL),
+  SUPABASE_KEY: cleanEnvVar(process.env.SUPABASE_KEY),
 
   // Google Sheets
   GOOGLE_SHEETS_API_KEY: cleanEnvVar(process.env.GOOGLE_SHEETS_API_KEY),
