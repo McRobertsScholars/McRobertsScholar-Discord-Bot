@@ -5,7 +5,7 @@ const logger = require("../utils/logger.js")
 const AI_SERVICES = {
   GROQ: {
     url: "https://api.groq.com/openai/v1/chat/completions",
-    model: "llama3-8b-8192", // Free tier available
+    model: "llama-3.1-8b-instant", // Free tier available
     headers: (apiKey) => ({
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
