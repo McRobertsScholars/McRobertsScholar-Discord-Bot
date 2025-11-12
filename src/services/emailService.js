@@ -25,6 +25,12 @@ class EmailService {
 
       if (!config.SMTP_USER || !config.SMTP_PASS) {
         logger.error("❌ SMTP credentials not set. Emails cannot be sent.")
+        logger.error("Missing credentials:", {
+          SMTP_USER: config.SMTP_USER ? "✓ Set" : "✗ Missing",
+          SMTP_PASS: config.SMTP_PASS ? "✓ Set" : "✗ Missing",
+          SMTP_HOST: config.SMTP_HOST,
+          SMTP_PORT: config.SMTP_PORT,
+        })
         return
       }
 
@@ -54,14 +60,19 @@ class EmailService {
         logger.info("✅ SMTP connection verified successfully")
       } catch (err) {
         logger.warn("⚠️ SMTP verification failed, will retry on first email send:")
-        logger.warn("Debug Info:", {
+        logger.warn("SMTP Configuration:", {
           host: config.SMTP_HOST,
           port: config.SMTP_PORT,
           secure: config.SMTP_SECURE,
           user: config.SMTP_USER,
           passLength: config.SMTP_PASS ? config.SMTP_PASS.length : 0,
-          error: err.message,
-          fullError: err,
+          passHasSpaces: config.SMTP_PASS ? config.SMTP_PASS.includes(" ") : false,
+        })
+        logger.warn("SMTP Error Details:", {
+          code: err.code,
+          message: err.message,
+          response: err.response,
+          responseCode: err.responseCode,
         })
       }
 
