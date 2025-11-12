@@ -36,21 +36,24 @@ class EmailService {
 
       // Create SMTP transporter
       this.transporter = nodemailer.createTransport({
-        host: config.SMTP_HOST,
-        port: config.SMTP_PORT,
-        secure: config.SMTP_SECURE,
+        host: config.SMTP_HOST || "smtp.gmail.com",
+        port: config.SMTP_PORT || 587,
+        secure: config.SMTP_SECURE !== false ? (config.SMTP_PORT === 465 ? true : false) : false, // Only secure on 465
         auth: {
           user: config.SMTP_USER,
           pass: config.SMTP_PASS,
         },
-        rejectUnauthorized: config.SMTP_REJECT_UNAUTHORIZED,
-        connectionTimeout: 10000, // 10 seconds
-        socketTimeout: 10000, // 10 seconds
+        tls: {
+          rejectUnauthorized: false, // Allow self-signed certs
+        },
+        connectionTimeout: 5000, // Reduced from 10s
+        socketTimeout: 5000,
+        greetingTimeout: 5000,
         pool: {
-          maxConnections: 3,
+          maxConnections: 1,
           maxMessages: Number.POSITIVE_INFINITY,
           rateDelta: 1000,
-          rateLimit: 5, // max 5 emails per second
+          rateLimit: 5,
         },
       })
 
