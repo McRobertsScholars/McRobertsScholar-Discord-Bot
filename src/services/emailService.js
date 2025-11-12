@@ -38,6 +38,14 @@ class EmailService {
           pass: config.SMTP_PASS,
         },
         rejectUnauthorized: config.SMTP_REJECT_UNAUTHORIZED,
+        connectionTimeout: 10000, // 10 seconds
+        socketTimeout: 10000, // 10 seconds
+        pool: {
+          maxConnections: 3,
+          maxMessages: Number.POSITIVE_INFINITY,
+          rateDelta: 1000,
+          rateLimit: 5, // max 5 emails per second
+        },
       })
 
       // Verify connection
@@ -69,7 +77,10 @@ class EmailService {
         replyTo: config.SMTP_USER,
       }
 
-      const res = await this.transporter.sendMail(mailOptions)
+      const res = await Promise.race([
+        this.transporter.sendMail(mailOptions),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Email send timeout after 30 seconds")), 30000)),
+      ])
       logger.info(`✅ Email sent to ${to} (Message ID: ${res.messageId})`)
       return res
     } catch (err) {
@@ -81,22 +92,41 @@ class EmailService {
   async sendBulkEmail(recipients, subject, text, html = null) {
     if (!this.isInitialized || !this.transporter) throw new Error("Email Service not initialized")
 
-    const results = []
-    const errors = []
-
-    for (const r of recipients) {
-      const to = typeof r === "string" ? r : r.email
-      if (!to) continue
-      try {
-        const res = await this.sendEmail(to, subject, text, html)
-        results.push({ email: to, status: "sent", messageId: res.messageId })
-      } catch (err) {
-        errors.push({ email: to, error: err.message })
-      }
+    if (!recipients || recipients.length === 0) {
+      logger.warn("⚠️ No recipients provided for bulk email")
+      return { results: [], errors: [] }
     }
 
-    logger.info(`✅ Bulk email process finished: ${results.length} sent, ${errors.length} failed`)
-    return { results, errors }
+    try {
+      const bccList = recipients.map((r) => (typeof r === "string" ? r : r.email)).filter(Boolean)
+
+      const mailOptions = {
+        from: `McRoberts Scholars Bot <${config.SMTP_USER}>`,
+        to: config.SMTP_USER, // Send to self
+        bcc: bccList, // All recipients get it but can't see each other
+        subject,
+        text,
+        html: html || text,
+        replyTo: config.SMTP_USER,
+      }
+
+      const res = await Promise.race([
+        this.transporter.sendMail(mailOptions),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Email send timeout after 30 seconds")), 30000)),
+      ])
+
+      logger.info(`✅ Bulk email sent to ${bccList.length} recipients (Message ID: ${res.messageId})`)
+      return {
+        results: bccList.map((email) => ({ email, status: "sent", messageId: res.messageId })),
+        errors: [],
+      }
+    } catch (err) {
+      logger.error(`❌ Bulk email failed:`, err.message)
+      return {
+        results: [],
+        errors: recipients.map((r) => ({ email: typeof r === "string" ? r : r.email, error: err.message })),
+      }
+    }
   }
 
   async sendTestEmail(to = config.SMTP_USER) {
