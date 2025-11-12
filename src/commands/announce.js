@@ -141,10 +141,10 @@ async function sendDiscordAnnouncement(interaction, announcement) {
       /* ignore */
     }
 
-    const content = announcement.pingEveryone ? "@everyone" : ""
+    const content = announcement.pingEveryone ? "@everyone " + announcement.discordContent : announcement.discordContent
     const embed = new EmbedBuilder()
       .setTitle(announcement.topic)
-      .setDescription(announcement.discordContent)
+      .setDescription("")
       .setColor(0x0099ff)
       .setTimestamp()
       .setFooter({ text: `Announced by ${interaction.user.username}` })
