@@ -53,7 +53,16 @@ class EmailService {
         await this.transporter.verify()
         logger.info("✅ SMTP connection verified successfully")
       } catch (err) {
-        logger.warn("⚠️ SMTP verification failed, will retry on first email send:", err.message)
+        logger.warn("⚠️ SMTP verification failed, will retry on first email send:")
+        logger.warn("Debug Info:", {
+          host: config.SMTP_HOST,
+          port: config.SMTP_PORT,
+          secure: config.SMTP_SECURE,
+          user: config.SMTP_USER,
+          passLength: config.SMTP_PASS ? config.SMTP_PASS.length : 0,
+          error: err.message,
+          fullError: err,
+        })
       }
 
       this.isInitialized = true
